@@ -113,17 +113,44 @@ const MUSIC = [
     ].join(' ')
   },
   {
-    id: 'wartime',
-    src: 'music/wartime.mp3',
+    id: 'wartime_quiet',
+    src: 'music/wartime_quiet.mp3',
     loop: true,
     scenario: 'ww2-1939',
     mood: 'wartime',
-    music_length_ms: 32000,
+    music_length_ms: 40000,
     prompt: [
-      'Instrumental only. Tense but quiet wartime newsreel bed for a European strategy map, 1939.',
-      'Snare on brushes, low strings, spare muted trumpet, 96 BPM.',
-      'Not a battle track: no explosions, no choir, no heroic fanfare, no anthem, no vocals.',
-      'Constant energy, no fade in or out, last bar must join the first for an endless loop.'
+      'Instrumental only. Very quiet background furniture for a classroom strategy game set in 1939 Europe.',
+      'Soft low string pad only, almost ambient, no melody you can hum, no drums, no snare, no trumpet, no ostinato.',
+      'Unhurried, about 60 BPM or unmetered. Easy to ignore while reading. No choir, no vocals, no anthem.',
+      'Constant very low dynamics, no swell, no cadence, seamless loop.'
+    ].join(' ')
+  },
+  {
+    id: 'wartime_fog',
+    src: 'music/wartime_fog.mp3',
+    loop: true,
+    scenario: 'ww2-1939',
+    mood: 'wartime',
+    music_length_ms: 40000,
+    prompt: [
+      'Instrumental only. Soft foggy chamber strings for a map table, 1939, barely there.',
+      'Two or three slow cello notes, long gaps, no percussion, no brass, no piano hook, no repeating riff.',
+      'Grey and calm, not sad, not epic. No vocals, no choir, no anthem, no newsreel energy.',
+      'Seamless quiet loop, even level, classroom-safe, easy to talk over.'
+    ].join(' ')
+  },
+  {
+    id: 'wartime_lamp',
+    src: 'music/wartime_lamp.mp3',
+    loop: true,
+    scenario: 'ww2-1939',
+    mood: 'wartime',
+    music_length_ms: 40000,
+    prompt: [
+      'Instrumental only. Warm lamp-lit documentary underscore, very sparse piano fifths and muted strings.',
+      'Soft, slow, 58 BPM. No drums, no snare, no trumpet, no march, no melody that repeats every four bars.',
+      'Background only. No vocals, no choir, no anthem. Seamless loop, no intro, no ending.'
     ].join(' ')
   },
   {
@@ -155,17 +182,42 @@ const MUSIC = [
     ].join(' ')
   },
   {
-    id: 'china_wartime',
-    src: 'music/china_wartime.mp3',
+    id: 'china_wartime_quiet',
+    src: 'music/china_wartime_quiet.mp3',
     loop: true,
     scenario: 'china-1939',
     mood: 'wartime',
-    music_length_ms: 32000,
+    music_length_ms: 40000,
     prompt: [
-      'Instrumental only. Tense but quiet War of Resistance documentary bed for a China strategy map, 1939.',
-      'Low strings, spare percussion on wood, distant muted brass, 92 BPM.',
-      'Not a battle track and not a march: no gunfire, no choir, no vocals, no anthem, no Japanese military music.',
-      'Constant energy, no fade, last bar joins the first. Classroom-safe, serious, no glorification of violence.'
+      'Instrumental only. Very quiet pentatonic string pad for a China map in 1939. Background furniture.',
+      'No drums, no woodblock, no brass, no flute hook, no melody you can hum, no anthem, no march.',
+      'Slow and even, easy to ignore while reading. No vocals, no choir. Seamless quiet loop.'
+    ].join(' ')
+  },
+  {
+    id: 'china_wartime_mist',
+    src: 'music/china_wartime_mist.mp3',
+    loop: true,
+    scenario: 'china-1939',
+    mood: 'wartime',
+    music_length_ms: 40000,
+    prompt: [
+      'Instrumental only. Soft misty zither harmonics and low strings, sparse, long silences between notes.',
+      'No percussion, no military music, no Japanese march, no Chinese anthem, no vocals, no choir.',
+      'Calm documentary air, not tense. Seamless quiet loop, classroom-safe, easy to talk over.'
+    ].join(' ')
+  },
+  {
+    id: 'china_wartime_river',
+    src: 'music/china_wartime_river.mp3',
+    loop: true,
+    scenario: 'china-1939',
+    mood: 'wartime',
+    music_length_ms: 40000,
+    prompt: [
+      'Instrumental only. Slow river-like low strings, pentatonic but almost drone, 1939 China documentary.',
+      'No drums, no flute lead, no catchy motif, no anthem, no march, no vocals.',
+      'Very quiet, constant level, seamless loop, easy to ignore while reading a lesson.'
     ].join(' ')
   },
   {

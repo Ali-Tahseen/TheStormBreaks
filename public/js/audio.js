@@ -31,9 +31,13 @@ export class AudioEngine {
     this.onChange = onChange;
     this.manifest = null;
     this.musicId = null;
-    this._musicWanted = null;
-    this._musicVolume = 0.22;
+    this._musicVolume = 0.12;
     this._sfxVolume = 0.55;
+    this._pool = [];
+    this._poolKey = '';
+    this._poolIndex = 0;
+    this._variantTimer = null;
+    this._onMusicTime = null;
     this._ctrl = null;
     this._loadPrefs();
     this._savePrefs();
@@ -69,36 +73,93 @@ export class AudioEngine {
   }
 
   setMusic(id) {
-    this._musicWanted = id || null;
-    this._applyMusic();
+    this.setMusicPool(id ? [id] : []);
+  }
+
+  setMusicPool(ids) {
+    const next = [...new Set((ids || []).filter(Boolean))];
+    const key = next.slice().sort().join('|');
+    if (key === this._poolKey) return;
+    this._poolKey = key;
+    this._pool = this._shuffle(next);
+    this._poolIndex = 0;
+    if (!this._pool.length) {
+      this._stopMusic();
+      return;
+    }
+    this._playPoolTrack();
   }
 
   duck(on) {
     const el = this.channels.music.audio;
-    if (el) el.volume = on ? 0.06 : this._musicVolume;
+    if (el) el.volume = on ? 0.04 : this._musicVolume;
   }
 
-  _applyMusic() {
-    const id = this._musicWanted;
-    if (!id) {
-      this._stopMusic();
-      return;
+  _shuffle(list) {
+    const out = [...list];
+    for (let i = out.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [out[i], out[j]] = [out[j], out[i]];
     }
-    if (this.musicId === id) return;
+    return out;
+  }
+
+  _playPoolTrack() {
+    const id = this._pool[this._poolIndex];
     const clip = this._clip('music', id);
     if (!clip) return;
     const el = this._channel('music');
+    this._unbindMusicLoop(el);
     el.loop = true;
     el.volume = this._musicVolume;
     el.src = clip.src;
     this.musicId = id;
+    this._bindMusicLoop(el);
     el.play().catch(() => {});
+    this._scheduleVariantChange();
+  }
+
+  _bindMusicLoop(el) {
+    const pad = 0.15;
+    this._onMusicTime = () => {
+      const d = el.duration;
+      if (!d || !Number.isFinite(d) || d <= pad * 4) return;
+      if (el.currentTime >= d - pad) el.currentTime = pad;
+    };
+    el.addEventListener('timeupdate', this._onMusicTime);
+  }
+
+  _unbindMusicLoop(el) {
+    if (el && this._onMusicTime) el.removeEventListener('timeupdate', this._onMusicTime);
+    this._onMusicTime = null;
+  }
+
+  _scheduleVariantChange() {
+    clearTimeout(this._variantTimer);
+    this._variantTimer = null;
+    if (this._pool.length < 2) return;
+    const ms = 270000 + Math.floor(Math.random() * 60000);
+    this._variantTimer = setTimeout(() => this._nextVariant(), ms);
+  }
+
+  _nextVariant() {
+    if (this._pool.length < 2) return;
+    let next = this._poolIndex;
+    while (next === this._poolIndex) next = Math.floor(Math.random() * this._pool.length);
+    this._poolIndex = next;
+    this._playPoolTrack();
   }
 
   _stopMusic() {
+    clearTimeout(this._variantTimer);
+    this._variantTimer = null;
     const el = this.channels.music.audio;
     this.musicId = null;
+    this._pool = [];
+    this._poolKey = '';
     if (!el) return;
+    this._unbindMusicLoop(el);
+    el.loop = false;
     el.pause();
     el.removeAttribute('src');
     el.load();

@@ -34,27 +34,28 @@ function musicMood(state) {
   return atWar ? 'wartime' : 'peace';
 }
 
-function pickMusicId(scenarioId, mood) {
+function pickMusicPool(scenarioId, mood) {
   const list = audio.manifest?.music || [];
-  const tagged = list.find(c => c.scenario === scenarioId && c.mood === mood);
-  if (tagged) return tagged.id;
-  if (mood === 'late') {
-    const war = list.find(c => c.scenario === scenarioId && c.mood === 'wartime');
-    if (war) return war.id;
+  let tagged = list.filter(c => c.scenario === scenarioId && c.mood === mood);
+  if (!tagged.length && mood === 'late') {
+    tagged = list.filter(c => c.scenario === scenarioId && c.mood === 'wartime');
   }
-  return mood === 'peace' ? 'peace' : 'wartime';
+  if (!tagged.length) {
+    tagged = list.filter(c => c.mood === mood);
+  }
+  return tagged.map(c => c.id);
 }
 
 function syncMusic() {
   if (!app.state) {
-    audio.setMusic(null);
+    audio.setMusicPool([]);
     return;
   }
-  audio.setMusic(pickMusicId(app.state.scenarioId, musicMood(app.state)));
+  audio.setMusicPool(pickMusicPool(app.state.scenarioId, musicMood(app.state)));
 }
 
 function previewScenarioMusic(scenarioId) {
-  audio.setMusic(pickMusicId(scenarioId, 'peace'));
+  audio.setMusicPool(pickMusicPool(scenarioId, 'peace'));
 }
 
 function eventSfx(events) {

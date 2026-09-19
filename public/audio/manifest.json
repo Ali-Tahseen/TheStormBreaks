@@ -58,8 +58,22 @@
       "mood": "peace"
     },
     {
-      "id": "wartime",
-      "src": "/audio/music/wartime.mp3",
+      "id": "wartime_quiet",
+      "src": "/audio/music/wartime_quiet.mp3",
+      "loop": true,
+      "scenario": "ww2-1939",
+      "mood": "wartime"
+    },
+    {
+      "id": "wartime_fog",
+      "src": "/audio/music/wartime_fog.mp3",
+      "loop": true,
+      "scenario": "ww2-1939",
+      "mood": "wartime"
+    },
+    {
+      "id": "wartime_lamp",
+      "src": "/audio/music/wartime_lamp.mp3",
       "loop": true,
       "scenario": "ww2-1939",
       "mood": "wartime"
@@ -79,8 +93,22 @@
       "mood": "peace"
     },
     {
-      "id": "china_wartime",
-      "src": "/audio/music/china_wartime.mp3",
+      "id": "china_wartime_quiet",
+      "src": "/audio/music/china_wartime_quiet.mp3",
+      "loop": true,
+      "scenario": "china-1939",
+      "mood": "wartime"
+    },
+    {
+      "id": "china_wartime_mist",
+      "src": "/audio/music/china_wartime_mist.mp3",
+      "loop": true,
+      "scenario": "china-1939",
+      "mood": "wartime"
+    },
+    {
+      "id": "china_wartime_river",
+      "src": "/audio/music/china_wartime_river.mp3",
       "loop": true,
       "scenario": "china-1939",
       "mood": "wartime"
