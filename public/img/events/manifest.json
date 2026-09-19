@@ -1,0 +1,48 @@
+{
+  "version": 2,
+  "note": "Pre-recorded archival event images, grouped by category (war, capitulation, destruction, economic_growth, low_economy, diplomatic_negotiations). Add a file under public/img/events/ and one entry here — no code change. public/js/event-images.js picks a category from the turn's text, then a random image from that category. Large files are Git LFS objects.",
+  "images": [
+    {
+      "category": "war",
+      "src": "/img/events/war.jpg",
+      "alt": "Infantry in a field position, one soldier throwing a hand grenade",
+      "credit": "Archival photograph"
+    },
+    {
+      "category": "war",
+      "src": "/img/events/war-2.jpg",
+      "alt": "Aerial view of a naval base under attack, battleships in the harbour",
+      "credit": "Archival photograph"
+    },
+    {
+      "category": "capitulation",
+      "src": "/img/events/capitulation.jpg",
+      "alt": "Officers gathered on a warship deck as a surrender document is signed",
+      "credit": "Archival photograph"
+    },
+    {
+      "category": "destruction",
+      "src": "/img/events/destruction.jpg",
+      "alt": "Civilians and a horse-drawn cart in a street of bombed-out buildings",
+      "credit": "Archival photograph"
+    },
+    {
+      "category": "economic_growth",
+      "src": "/img/events/economic_growth.jpg",
+      "alt": "Workers among rows of machinery on a textile mill floor",
+      "credit": "Archival photograph"
+    },
+    {
+      "category": "diplomatic_negotiations",
+      "src": "/img/events/diplomatic_negotiations.jpg",
+      "alt": "Delegates signing an agreement at a round table lined with national flags",
+      "credit": "Archival photograph"
+    },
+    {
+      "category": "low_economy",
+      "src": "/img/events/low_economy.jpg",
+      "alt": "People queuing at a relief kitchen to receive food",
+      "credit": "Archival photograph"
+    }
+  ]
+}

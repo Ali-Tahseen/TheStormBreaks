@@ -319,6 +319,35 @@ export function logHTML(state, { audio = false } = {}) {
   return intro + turns;
 }
 
+// ---------- event popup (centred, HOI4-style) ----------
+const FEAS_LABEL = { success: 'Success', partial: 'Partial', failed: 'Failed', refused: 'Refused' };
+
+// The headline and short summary of the turn, shown in a wide centred window
+// after every order: an archival photo on the left, the story on the right.
+// `image` is an entry from public/img/events/manifest.json (or null).
+export function eventPopupHTML(entry, state, { image = null, summary = '' } = {}) {
+  const feas = FEAS_LABEL[entry?.feasibility] ? entry.feasibility : 'partial';
+  const date = entry?.dateAfter || (state?.date ? fmtDate(state.date) : '');
+  const figure = image ? `
+        <figure class="event-figure">
+          <img src="${esc(image.src)}" alt="${esc(image.alt || entry?.headline || 'Event')}" loading="lazy">
+          ${image.credit ? `<figcaption>${esc(image.credit)}</figcaption>` : ''}
+        </figure>` : '';
+  return `
+    <button class="event-close" type="button" data-close-event aria-label="Close">×</button>
+    <div class="event-grid${image ? '' : ' no-image'}">${figure}
+      <div class="event-body">
+        <p class="event-eyebrow">A major event unfolds</p>
+        <p class="event-date">${esc(date)}<span class="feas ${esc(feas)}">${esc(FEAS_LABEL[feas])}</span></p>
+        <h2 id="event-title">${esc(entry?.headline || 'Events unfold')}</h2>
+        ${summary ? `<p class="event-summary">${esc(summary)}</p>` : ''}
+        <div class="event-actions">
+          <button class="btn primary event-continue" type="button" data-close-event>Continue</button>
+        </div>
+      </div>
+    </div>`;
+}
+
 // ---------- lesson drawer ----------
 export function lessonHTML(entry) {
   const l = entry.lesson || {};

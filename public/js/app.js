@@ -8,13 +8,15 @@ import { AudioEngine } from './audio.js';
 import { portraitFor } from './portraits.js';
 import {
   esc, fmtDate, nationCard, statsTab, diplomacyMini, journalMini, intelCard, dossierHTML,
-  advisorBarHTML, advisorsHTML, warsOf, logHTML, lessonHTML, hoodHTML, reportHTML
+  advisorBarHTML, advisorsHTML, warsOf, logHTML, lessonHTML, hoodHTML, reportHTML, eventPopupHTML
 } from './panels.js';
+import { pickEventImage, summaryFromNarrative } from './event-images.js';
 
 const $ = (sel) => document.querySelector(sel);
 const app = {
   info: null, state: null, selected: null, tab: 'economy', busy: false, map: null, lessonTurn: null,
-  dossierOpen: false, advisorsOpen: false, advisorsSeen: null, advisorRole: 'economy'
+  dossierOpen: false, advisorsOpen: false, advisorsSeen: null, advisorRole: 'economy',
+  eventImages: null, eventClose: null
 };
 const audio = new AudioEngine({
   onChange: () => {
@@ -74,6 +76,15 @@ function activeScenario() {
   return (app.info?.scenarios || []).find(s => s.id === id) || app.info?.scenario || {};
 }
 
+// Pre-recorded event images (public/img/events/manifest.json). Missing file or
+// empty list just means text-only event popups.
+async function loadEventImages() {
+  try {
+    const res = await fetch('/img/events/manifest.json');
+    if (res.ok) app.eventImages = await res.json();
+  } catch { app.eventImages = null; }
+}
+
 // ---------------- boot ----------------
 async function boot() {
   const info = await api.info();
@@ -91,6 +102,7 @@ async function boot() {
   });
 
   await audio.loadBank();
+  await loadEventImages();
   wireUI();
   renderLegend();
 
@@ -397,18 +409,21 @@ async function sendOrder(order) {
     app.state = state;
     app.busy = false;
     clearInterval(timer);
-    if (audioReady() && audio.enabled) {
-      playNarration(entry.turn);
-    }
     await rollDate(fromDate, state.date);
     renderAll({ changed: entry.changedTerritories });
     syncMusic();
-    const sting = eventSfx(state.events.slice(prevEvents));
+    const turnEvents = state.events.slice(prevEvents);
+    const sting = eventSfx(turnEvents);
     if (sting) audio.playSfx(sting);
     else if (entry.changedTerritories.length) audio.playSfx('map_pulse');
-    openLesson(entry.turn);
-    if (entry.changedTerritories.length) setTimeout(() => app.map.focus(entry.changedTerritories), 350);
-    if (state.gameOver) setTimeout(showEnding, 1500);
+    // The popup is the beat: narration plays with it, and the lesson and map
+    // focus wait until the student acknowledges it with OK.
+    openEventPopup(entry, turnEvents, () => {
+      openLesson(entry.turn);
+      if (entry.changedTerritories.length) app.map.focus(entry.changedTerritories);
+      if (state.gameOver) showEnding();
+    });
+    if (audioReady() && audio.enabled) playNarration(entry.turn);
   } catch (err) {
     app.busy = false;
     clearInterval(timer);
@@ -433,6 +448,29 @@ async function rollDate(from, to) {
     audio.playSfx('time_tick');
     await new Promise(r => setTimeout(r, 260));
   }
+}
+
+// ---------------- event popup ----------------
+// The centred "what happened" window shown after every order. The map focus
+// and the history lesson wait until the student acknowledges it with OK.
+function openEventPopup(entry, turnEvents, onClose) {
+  const image = pickEventImage(app.eventImages, entry, turnEvents);
+  $('#event .sheet').innerHTML = eventPopupHTML(entry, app.state, {
+    image, summary: summaryFromNarrative(entry)
+  });
+  const box = $('#event');
+  app.eventClose = typeof onClose === 'function' ? onClose : null;
+  box.hidden = false;
+  box.querySelector('.event-continue')?.focus();
+}
+function closeEventPopup() {
+  const box = $('#event');
+  if (box.hidden) return;
+  box.hidden = true;
+  const cb = app.eventClose;
+  app.eventClose = null;
+  if (cb) cb();
+  $('#order')?.focus();
 }
 
 // ---------------- lesson drawer ----------------
@@ -545,6 +583,8 @@ async function startGame(form) {
     audio.stop();
     $('#start').hidden = true;
     $('#ending').hidden = true;
+    $('#event').hidden = true;
+    app.eventClose = null;
     closeLesson();
     setDossier(false);
     setAdvisors(false);
@@ -708,12 +748,13 @@ function wireUI() {
 
   // Modals: close buttons, start form, loading saves, manual actions
   document.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-close-event]')) return closeEventPopup();
     const overlay = e.target.closest('.overlay');
     if (e.target.closest('[data-close]') && overlay && app.state) {
       overlay.hidden = true;
       if (overlay.id === 'start') syncMusic();
     }
-    if (e.target.classList.contains('overlay') && app.state) {
+    if (e.target.classList.contains('overlay') && e.target.id !== 'event' && app.state) {
       e.target.hidden = true;
       if (e.target.id === 'start') syncMusic();
     }
@@ -727,6 +768,8 @@ function wireUI() {
         setAdvisors(false);
         audio.stop();
         $('#start').hidden = true;
+        $('#event').hidden = true;
+        app.eventClose = null;
         renderAll();
         syncMusic();
         applyInitialCamera(app.map, app.state, {
@@ -760,7 +803,8 @@ function wireUI() {
   $('#start').addEventListener('submit', (e) => { e.preventDefault(); startGame(e.target); });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      if (!$('#hood').hidden) $('#hood').hidden = true;
+      if (!$('#event').hidden) closeEventPopup();
+      else if (!$('#hood').hidden) $('#hood').hidden = true;
       else if (!$('#start').hidden && app.state) $('#start').hidden = true;
       else if (app.advisorsOpen) setAdvisors(false);
       else if (app.dossierOpen) setDossier(false);

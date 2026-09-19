@@ -42,6 +42,8 @@ Stack: Node.js ≥ 18.17 (ES modules), Express 5, dotenv, vanilla JS frontend wi
 | `public/js/map.js` | `WorldMap`: projection, fills, occupation patterns, borders mesh, labels, zoom/views (incl. China)/focus, pulse |
 | `public/js/panels.js` | Pure HTML builders: compact nation panel (stat tiles, diplomacy summary, journal), intel card, country report (dossier), advisors bar + briefing, log, lesson, hood, after-action report |
 | `public/js/portraits.js` | `portraitFor(nation)`: matches `public/img/country_leaders_portraits/*.jpg` to the nation's current leader (head-of-state fallback for France under Daladier/Reynaud and Bulgaria) |
+| `public/js/event-images.js` | `eventCategory()` + `pickEventImage()` (random within a category) + `summaryFromNarrative()` for the event popup. Pure, no DOM |
+| `public/img/events/manifest.json` | Pre-recorded event images grouped by `category` (war, capitulation, destruction, economic_growth, low_economy, diplomatic_negotiations). Matched by `event-images.js` |
 | `public/js/api.js` | Fetch wrapper; `listen()` for SSE |
 | `tools/build-map.mjs` | Builds `public/data/world-1939.json`: groups Natural Earth provinces into 1939 territories and cuts along historical border lines (`CLIPS`) |
 | `mcp/server.js` | MCP tools that call the REST API on `GAME_URL` |
@@ -57,6 +59,8 @@ Data contracts are in `docs/API.md` (state and journal shapes) and `docs/ACTIONS
 **Add a tab**: add a button in `index.html` (`data-tab`), give indicators that `tab` value, or add a custom builder in `panels.js` and a branch in `renderLedger()`. Keep the compact panel small: its body has a fixed height (`.tab-body`).
 
 **Add a leader portrait**: put `<name>.jpg` in `public/img/country_leaders_portraits/` and add it to `PORTRAITS` and `BY_LEADER` in `public/js/portraits.js`. Any ratio works; the frame crops to 3:4.
+
+**Add an event image**: put the file in `public/img/events/` and add one entry to `public/img/events/manifest.json` (`category`, `src`, `alt`, optional `credit`, or `default: true`). `public/js/event-images.js` picks the category from the turn's words, then a random image of that category. No code change. Large images are Git LFS (see `.gitattributes`); `tests/event.test.js` covers the matcher.
 
 **Change the advisors**: the prompt is `advisorsSystem()` and the request `advisorsRequest()` in `server/agents.js`; the opening briefings are data in `server/data/advisors/`; the offline generator is `mockAdvisors()` in `server/mock.js`. Advisors must stay advice-only (no actions).
 
