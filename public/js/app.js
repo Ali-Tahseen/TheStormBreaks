@@ -2,6 +2,7 @@
 
 import { api, listen } from './api.js';
 import { WorldMap } from './map.js';
+import { applyInitialCamera } from './camera.js';
 import { swatchStyle } from './flags.js';
 import {
   esc, fmtDate, nationCard, indicatorTab, diplomacyTab, journalTab,
@@ -41,7 +42,9 @@ async function boot() {
   if (app.state) {
     app.selected = app.state.player;
     renderAll();
-    app.map.view(activeScenario().defaultView || 'world', false);
+    applyInitialCamera(app.map, app.state, {
+      defaultView: activeScenario().defaultView || 'world', animate: false
+    });
     if (app.state.gameOver) showEnding();
   } else {
     app.map.view('world', false);
@@ -317,7 +320,7 @@ async function startGame(form) {
     $('#ending').hidden = true;
     closeLesson();
     renderAll();
-    app.map.view(sc.defaultView || 'world');
+    applyInitialCamera(app.map, app.state, { defaultView: sc.defaultView || 'world' });
     $('#order').focus();
   } catch (err) { toast(err.message, true); }
 }
@@ -447,6 +450,9 @@ function wireUI() {
         app.selected = app.state.player;
         $('#start').hidden = true;
         renderAll();
+        applyInitialCamera(app.map, app.state, {
+          defaultView: activeScenario().defaultView || 'world'
+        });
         toast(`Loaded “${load.dataset.load}”.`);
       } catch (err) { toast(err.message, true); }
     }

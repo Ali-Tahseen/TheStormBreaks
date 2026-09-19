@@ -7,7 +7,7 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "mcp": "node mcp/server.js",
-    "test": "node tests/engine.test.js",
+    "test": "node tests/engine.test.js && node tests/camera.test.js",
     "build-map": "node tools/build-map.mjs"
   },
   "author": "",

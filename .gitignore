@@ -1,3 +1,7 @@
+_ignore/
+.cursor/
+
+
 node_modules/
 .env
 saves/*.json

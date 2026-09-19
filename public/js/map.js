@@ -216,11 +216,12 @@ export class WorldMap {
     this.zoomToBounds([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]], animate);
   }
 
-  focus(names) {
+  focus(names, animate = true) {
     const fs = names.map(n => this.byName.get(n)).filter(Boolean);
-    if (!fs.length) return;
+    if (!fs.length) return false;
     const b = this.path.bounds({ type: 'FeatureCollection', features: fs });
     const pad = 30;
-    this.zoomToBounds([[b[0][0] - pad, b[0][1] - pad], [b[1][0] + pad, b[1][1] + pad]]);
+    this.zoomToBounds([[b[0][0] - pad, b[0][1] - pad], [b[1][0] + pad, b[1][1] + pad]], animate);
+    return true;
   }
 }
