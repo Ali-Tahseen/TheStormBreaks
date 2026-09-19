@@ -1,4 +1,4 @@
-# The Storm Breaks
+# The Storm Breaks pedicts
 
 A text-driven Second World War strategy game for history classrooms. Students lead a nation by typing orders in plain language. AI agents decide what happens, the world map changes, and after every turn a short lesson compares the student's alternate timeline with what really happened. When the campaign ends, a **Finish Game** button produces a graded after-action report.
 
