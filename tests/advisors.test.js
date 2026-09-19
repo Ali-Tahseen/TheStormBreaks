@@ -89,7 +89,7 @@ await test('offline turn produces an advisors briefing on the state and in the j
 // ---- LLM path, through a fake OpenAI-compatible server on localhost ----
 const replies = {
   gm: { interpretation: 'x', feasibility: 'success', feasibility_reason: 'ok', time_advance_months: 2, headline: 'Convoys sail',
-        narrative: 'The Royal Navy organised convoys.', actions: [{ type: 'change_indicator', country: 'UK', indicator: 'citizen_support', delta: 4, reason: 'Confidence' }], advisor_notes: [] },
+        narrative: 'The Royal Navy organised convoys.', actions: [{ type: 'change_indicator', country: 'UK', indicator: 'citizen_support', delta: 4, reason: 'Confidence' }] },
   rivals: { reactions: [{ country: 'GER', leader: 'Adolf Hitler', statement: 'We will answer.', intent: 'Build U-boats.' }],
             actions: [{ type: 'change_indicator', country: 'GER', indicator: 'army_support', delta: -2, reason: 'Doubts' }] },
   teacher: { lesson: { title: 'Convoys', what_really_happened: 'Convoys began in 1939.', reflection_question: 'Why?' } },

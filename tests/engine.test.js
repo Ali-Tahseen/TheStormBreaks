@@ -100,6 +100,33 @@ test('annexing the last territory defeats a nation', () => {
   assert.ok(!s.wars.some(w => w.includes('POL')));
 });
 
+test('capitulate ends a nation\'s wars and keeps its remaining land', () => {
+  const s = createGame({ player: 'GER' }, names);
+  const r = applyActions(s, [{ type: 'capitulate', country: 'FRA', occupier: 'GER', percent: 100 }]);
+  assert.equal(r.rejected.length, 0);
+  assert.equal(s.nations.FRA.capitulated, true);
+  assert.ok(!s.wars.some(w => w.includes('FRA')));
+  assert.equal(s.territories['France'].owner, 'FRA', 'France keeps its land unless it is annexed');
+  assert.equal(s.territories['France'].occupation.GER, 100, 'the victor may occupy the land it holds');
+  assert.equal(s.territories['Algeria'].owner, 'FRA', 'colonies remain French (Vichy-style)');
+});
+
+test('fully occupying a nation\'s home territory makes it capitulate', () => {
+  const s = createGame({ player: 'GER' }, names);
+  applyActions(s, [{ type: 'declare_war', attacker: 'GER', defender: 'FRA' }]);
+  applyActions(s, [{ type: 'occupy_territory', territory: 'France', occupier: 'GER', percent: 100 }]);
+  assert.equal(s.nations.FRA.capitulated, true);
+  assert.ok(!s.wars.some(w => w.includes('FRA')));
+});
+
+test('a rejected capitulate changes nothing', () => {
+  const s = createGame({ player: 'GER' }, names);
+  const r = applyActions(s, [{ type: 'capitulate', country: 'FRA', occupier: 'GER', territories: ['Atlantis'] }]);
+  assert.equal(r.rejected.length, 1);
+  assert.equal(s.nations.FRA.capitulated, false);
+  assert.equal(s.territories['France'].occupation.GER, undefined);
+});
+
 test('time advances and stops at the scenario end date', () => {
   const s = createGame({ player: 'GER' }, names);
   advanceTime(s, 4);

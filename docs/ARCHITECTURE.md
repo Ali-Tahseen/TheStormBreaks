@@ -16,8 +16,8 @@
    { "task": "resolve_player_order", "player_order": "...", "world": { ... }, "real_history_nearby": [ ... ] }
    ```
    `world` comes from `summarizeForLLM()`: date, player, relevant nations with indicators and wars, the player's relations, **every territory with its owner** (so the model knows valid names), and the last 4 turns.
-3. Call the model with the Game Master system prompt → `cleanGM()` normalises the JSON (defaults, length limits, time skip clamped to 1–6 months).
-4. `applyActions(..., {source: 'game_master'})`, then `advanceTime()`.
+3. Call the model with the Game Master system prompt → `cleanGM()` normalises the JSON (defaults, length limits, time skip clamped to 1–6 months). If the narrative claims a territorial or surrender change but no territory action was emitted (`gmDiverges()`), the Game Master is asked once more for the matching actions; if it still diverges, a warning is recorded in the turn debug.
+4. `applyActions(..., {source: 'game_master'})`, then `advanceTime()`. Fully occupying a nation's home territory automatically makes it capitulate (engine rule), so the map cannot silently disagree with the story.
 5. The **History Teacher** starts at once (it only needs the outcome: the period, the order and the real events in that period → the lesson). Meanwhile, in sequence:
    - **Rival Leaders** get what just happened plus a shorter world summary → reactions and actions. Applied with `forbidActor: player`, then deltas are computed.
    - **Advisors** (`briefAdvisors`) get the player's indicators and last-turn changes, wars, occupation at home and abroad, relations, the last turn (order, outcome, rival reactions) and the real events of the last few months → a briefing from the economic advisor, the diplomat and the military advisor. Each gives an `outlook` (`good|steady|worrying|critical`) plus one line on the situation at home, one abroad and one suggestion. Advisors emit **no actions**; `cleanAdvisors()` keeps only those four fields per advisor.
@@ -31,7 +31,7 @@ If step 3 fails (network, bad key, invalid JSON twice), the server restores the 
 
 All prompts are in `server/agents.js` and are built from the active scenario:
 
-- `actionSpec(scenario)`: the action list the models see. Built from `scenario.indicators` and `scenario.factions`, so new indicators or factions appear automatically.
+- `actionSpec(scenario)`: the action list the models see. Built from `scenario.indicators` and `scenario.factions`, so new indicators or factions appear automatically. Includes `capitulate`, the single action for a surrender or armistice (a nation leaves the war but keeps any land not occupied or annexed — Vichy France, 1940).
 - `SAFETY`: audience rules for students aged 12–18. Atrocities are never playable; the Holocaust is taught accurately; leader dialogue is labelled in-game and never passed off as real quotations.
 - `gameMasterSystem()`, `rivalsSystem()`, `teacherSystem()`, `advisorsSystem()`: one per agent. Each takes scenario text (era, setting, rival guidance, teacher context, timeline). Each ends with the exact JSON shape expected.
 - `reportSystem(scenario)`: the end-of-campaign examiner.

@@ -73,7 +73,7 @@ server.registerTool('take_turn', {
     const { entry } = await call('POST', '/api/turn', { order });
     return text({
       period: `${entry.dateBefore} -> ${entry.dateAfter}`, headline: entry.headline, feasibility: entry.feasibility,
-      narrative: entry.narrative, advisorNotes: entry.advisorNotes, advisors: entry.advisors, reactions: entry.reactions, lesson: entry.lesson
+      narrative: entry.narrative, advisors: entry.advisors, reactions: entry.reactions, lesson: entry.lesson
     });
   } catch (e) { return fail(e); }
 });

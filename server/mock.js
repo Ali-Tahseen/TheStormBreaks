@@ -40,7 +40,7 @@ export function mockGameMaster(state, order) {
   const player = state.player;
   const P = state.nations[player];
   const { nations, territories } = scanMentions(state, order);
-  const actions = [], notes = [];
+  const actions = [];
   let months = 1, feasibility = 'success', reason = 'Offline demo mode applies simple rules.';
   let headline = `${P.name} issues new orders`;
   const story = [];
@@ -88,6 +88,9 @@ export function mockGameMaster(state, order) {
       }
       const current = terr.occupation[actor] || 0;
       if (current + delta >= 100) {
+        if (state.nations[owner].home === target.name) {
+          actions.push({ type: 'capitulate', country: owner, occupier: actor, percent: 100, reason: 'Home territory overrun' });
+        }
         actions.push({ type: 'annex_territory', territory: target.name, new_owner: actor, reason: 'Complete conquest' });
         actions.push({ type: 'add_event', title: `${A.name} conquers ${target.name}`, description: `${target.name} is now fully under ${A.name}'s control.`, category: 'war', territories: [target.name] });
         story.push(`After heavy fighting, ${target.name} fell completely under ${A.name}'s control.`);
@@ -102,7 +105,6 @@ export function mockGameMaster(state, order) {
       actions.push({ type: 'change_indicator', country: actor, indicator: 'war_support', delta: -2, reason: 'Casualty reports' });
       actions.push({ type: 'change_indicator', country: owner, indicator: 'stability', delta: -6, reason: 'Invasion' });
       actions.push({ type: 'change_relation', a: owner, b: actor, delta: -30 });
-      notes.push(`- ${A.name} army: losses in the offensive`, `- ${O.name} stability: invasion`);
     }
   } else if (/declare war/.test(text) && nations.length) {
     const t = nations.find(n => n.tag !== player);
@@ -132,7 +134,6 @@ export function mockGameMaster(state, order) {
     actions.push({ type: 'change_indicator', country: player, indicator: 'gdp', delta: Math.round(P.indicators.gdp * 0.03), reason: 'Growth' });
     actions.push({ type: 'change_indicator', country: player, indicator: 'stability', delta: -2, reason: 'Long working hours' });
     story.push('New factories were built and production quotas raised, though workers grumbled about longer hours.');
-    notes.push('+ Industry: new factories', '- Stability: longer working hours');
   }
   const mil = [['army', /(army|tank|recruit|mobili|conscript|infantry)/], ['navy', /(navy|ship|fleet|submarine|u-boat)/], ['air', /(air force|plane|aircraft|bomber|fighter|luftwaffe|raf)/]];
   for (const [k, re] of mil) {
@@ -142,14 +143,12 @@ export function mockGameMaster(state, order) {
       actions.push({ type: 'change_indicator', country: player, indicator: 'army_support', delta: 2, reason: 'Officers welcome new equipment' });
       actions.push({ type: 'change_indicator', country: player, indicator: 'gdp', delta: -Math.round(P.indicators.gdp * 0.01), reason: 'Military spending' });
       story.push(`Resources were poured into the ${k === 'air' ? 'air force' : k}.`);
-      notes.push(`+ ${k}: rearmament`, '+ Army support: officers welcome new equipment', '- GDP: military spending');
     }
   }
   if (/(propaganda|speech|rally|newspaper|radio)/.test(text)) {
     actions.push({ type: 'change_indicator', country: player, indicator: 'war_support', delta: 5, reason: 'Propaganda campaign' });
     actions.push({ type: 'change_indicator', country: player, indicator: 'citizen_support', delta: 3, reason: 'Propaganda campaign' });
     story.push('Radio broadcasts and posters worked to shape public opinion.');
-    notes.push('+ War support: propaganda', '+ Citizen support: propaganda');
   }
   const faction = text.match(/\b(allies|axis|comintern|united front)\b/);
   if (faction && /(join|ally|alliance)/.test(text)) {
@@ -173,8 +172,7 @@ export function mockGameMaster(state, order) {
     time_advance_months: months,
     headline,
     narrative: story.join(' ') + '\n\n(Offline demo mode — connect an LLM in .env for full AI narration.)',
-    actions,
-    advisor_notes: notes
+    actions
   };
 }
 

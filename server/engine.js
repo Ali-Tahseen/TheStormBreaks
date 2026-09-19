@@ -14,7 +14,8 @@ import { getScenario, DEFAULT_SCENARIO_ID } from './data/scenarios/index.js';
 
 export const ACTION_TYPES = [
   'change_indicator', 'set_indicator', 'occupy_territory', 'liberate_territory', 'annex_territory',
-  'declare_war', 'make_peace', 'join_faction', 'leave_faction', 'change_relation', 'set_leader', 'add_event'
+  'capitulate', 'declare_war', 'make_peace', 'join_faction', 'leave_faction', 'change_relation',
+  'set_leader', 'add_event'
 ];
 
 const MAX_STEP = 30;          // biggest change to a 0–100 indicator in one action
@@ -214,6 +215,7 @@ function actorsOf(a) {
     case 'occupy_territory': return [a.occupier];
     case 'liberate_territory': return [a.by || a.occupier];
     case 'annex_territory': return [a.new_owner];
+    case 'capitulate': return [a.country];
     case 'declare_war': return [a.attacker];
     case 'make_peace': return [a.a, a.b];
     case 'change_relation': return [a.a];
@@ -268,6 +270,44 @@ function needTerritory(state, ref) {
 function markChanged(state, t) {
   if (!state.lastChangedTerritories.includes(t)) state.lastChangedTerritories.push(t);
 }
+
+// Set one occupier's share of a territory, keeping all occupiers together at
+// 100% or less. Used by occupy_territory and capitulate.
+function setOccupation(state, t, occ, target) {
+  const terr = state.territories[t];
+  target = Math.round(Math.min(100, Math.max(0, target)));
+  if (target === 0) delete terr.occupation[occ]; else terr.occupation[occ] = target;
+  const others = Object.keys(terr.occupation).filter(k => k !== occ);
+  const otherSum = others.reduce((s, k) => s + terr.occupation[k], 0);
+  if (target + otherSum > 100 && otherSum > 0) {
+    const room = 100 - target;
+    for (const k of others) {
+      const v = Math.floor(terr.occupation[k] * room / otherSum);
+      if (v <= 0) delete terr.occupation[k]; else terr.occupation[k] = v;
+    }
+  }
+  markChanged(state, t);
+}
+
+// A nation whose home territory is fully occupied by an enemy it is at war
+// with can no longer fight on. Mark it defeated (it may keep its colonies, as
+// Vichy France did in 1940) and end its wars, so the map and the rest of the
+// game stop treating it as an active belligerent. Returns true if it fell.
+function maybeCapitulate(state, tag) {
+  const nat = state.nations[tag];
+  if (!nat || nat.capitulated || !nat.home) return false;
+  const terr = state.territories[nat.home];
+  if (!terr || terr.owner !== tag) return false;
+  const held = Object.entries(terr.occupation)
+    .filter(([occ]) => occ !== tag && atWar(state, tag, occ))
+    .reduce((s, [, v]) => s + v, 0);
+  if (held < 100) return false;
+  nat.capitulated = true;
+  state.wars = state.wars.filter(w => !w.includes(tag));
+  markChanged(state, nat.home);
+  return true;
+}
+
 function limitStep(scenario, key, current, target) {
   const def = scenario.indicators[key];
   let next = target;
@@ -316,20 +356,35 @@ const APPLY = {
     else if (a.delta !== undefined) target = current + Number(a.delta);
     else throw new Error('occupy_territory needs "percent" (absolute) or "delta" (change)');
     if (!Number.isFinite(target)) throw new Error('percent/delta must be a number');
-    target = Math.round(Math.min(100, Math.max(0, target)));
-    if (target === 0) delete terr.occupation[occ]; else terr.occupation[occ] = target;
-    // Occupiers together can never hold more than 100%.
-    const others = Object.keys(terr.occupation).filter(k => k !== occ);
-    const otherSum = others.reduce((s, k) => s + terr.occupation[k], 0);
-    if (target + otherSum > 100 && otherSum > 0) {
-      const room = 100 - target;
-      for (const k of others) {
-        const v = Math.floor(terr.occupation[k] * room / otherSum);
-        if (v <= 0) delete terr.occupation[k]; else terr.occupation[k] = v;
-      }
+    setOccupation(state, t, occ, target);
+    // Fully occupying a nation's home forces it out of the war.
+    const fell = maybeCapitulate(state, terr.owner);
+    return `${state.nations[occ].name} controls ${Math.round(Math.min(100, Math.max(0, target)))}% of ${t} (was ${current}%)${fell ? ` — ${state.nations[terr.owner].name} capitulates` : ''}`;
+  },
+
+  capitulate(state, a) {
+    const tag = needNation(state, a.country, 'country');
+    const nat = state.nations[tag];
+    if (nat.capitulated) throw new Error(`${nat.name} has already capitulated`);
+    // Validate everything before mutating, so a rejected action changes nothing.
+    let occ = null, pct = 100, targets = [];
+    if (a.occupier) {
+      occ = needNation(state, a.occupier, 'occupier');
+      pct = a.percent !== undefined ? Number(a.percent) : 100;
+      if (!Number.isFinite(pct)) throw new Error('percent must be a number');
+      targets = (Array.isArray(a.territories) && a.territories.length)
+        ? a.territories.map(t => needTerritory(state, t))
+        : territoriesOf(state, tag);
     }
-    markChanged(state, t);
-    return `${state.nations[occ].name} controls ${target}% of ${t} (was ${current}%)`;
+    nat.capitulated = true;
+    state.wars = state.wars.filter(w => !w.includes(tag));
+    let occupied = 0;
+    for (const t of targets) {
+      if (state.territories[t].owner !== tag) continue;
+      setOccupation(state, t, occ, pct);
+      occupied++;
+    }
+    return `${nat.name} capitulates${occ ? `; ${state.nations[occ].name} occupies ${occupied} of its territories` : ''}`;
   },
 
   liberate_territory(state, a) {
@@ -469,7 +524,7 @@ export function advanceTime(state, months) {
 export function checkGameOver(state) {
   const scenario = getScenario(state.scenarioId);
   const p = state.nations[state.player];
-  if (p.capitulated) return { reason: `${p.name} has been defeated and lost all its territory.` };
+  if (p.capitulated) return { reason: `${p.name} has been defeated and its government has capitulated.` };
   if (p.indicators.stability <= 0) return { reason: `Stability in ${p.name} collapsed. The government has fallen.` };
   if (monthIndex(state.date) >= monthIndex(state.endDate)) return { reason: scenario.endReason };
   return null;

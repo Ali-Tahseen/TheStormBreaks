@@ -61,7 +61,7 @@ Sets a value (still subject to the per-action limit).
 ```
 
 ### `occupy_territory`
-Partial military control. Use `delta` (change) or `percent` (absolute, 0–100). Shown on the map as stripes in the occupier's colour; thicker stripes mean more control. All occupiers of one territory together can't exceed 100%.
+Partial military control. Use `delta` (change) or `percent` (absolute, 0–100). Shown on the map as stripes in the occupier's colour; thicker stripes mean more control. All occupiers of one territory together can't exceed 100%. If a nation's **home territory** is fully occupied by an enemy it is at war with, that nation automatically capitulates (see below).
 ```json
 { "type": "occupy_territory", "territory": "Canada", "occupier": "GER", "delta": 10 }
 { "type": "occupy_territory", "territory": "Poland", "occupier": "SOV", "percent": 50 }
@@ -79,6 +79,15 @@ Full, formal transfer of ownership. Clears occupation. If the old owner has no t
 ```json
 { "type": "annex_territory", "territory": "Austria", "new_owner": "GER" }
 ```
+
+### `capitulate`
+A nation surrenders, signs an armistice or its government falls. It is marked defeated and removed from all wars. It **keeps any land not occupied or annexed** — so France in 1940 can leave the war while its colonies remain (Vichy-style). Give `occupier` to mark how much of its remaining land the victor now holds; `percent` defaults to 100. Optionally list specific `territories` (otherwise all the nation's territories are used).
+```json
+{ "type": "capitulate", "country": "FRA", "occupier": "GER", "percent": 100 }
+{ "type": "capitulate", "country": "POL", "reason": "Government flees into exile" }
+```
+
+A nation also capitulates automatically when its home territory is fully occupied by an enemy it is at war with.
 
 ### `declare_war` / `make_peace`
 ```json
@@ -116,7 +125,6 @@ Adds a milestone to the timeline strip under the map. Listed territories pulse o
 
 - **Game Master**, **manual** and **MCP** actions can affect any nation.
 - **Rival Leaders** actions are rejected if the acting nation is the player's (so AI rivals can't lower your stats directly). The "acting nation" is `country`, `occupier`, `new_owner`, `attacker`, `a`, or `by`, depending on the type.
-
 ## Adding a new action type
 
 1. Add the name to `ACTION_TYPES` in `server/engine.js`.

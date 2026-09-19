@@ -285,7 +285,6 @@ app.get('/api/journal.md', (req, res) => {
     lines.push(`## Turn ${j.turn}: ${j.dateBefore} → ${j.dateAfter}`, '');
     lines.push(`**My order:** ${j.order}`, '');
     lines.push(`**Outcome (${j.feasibility}):** ${j.headline}`, '', j.narrative, '');
-    if (j.advisorNotes?.length) lines.push('**Effects this turn:**', ...j.advisorNotes.map(a => `- ${a}`), '');
     if (j.advisors) {
       lines.push(`**Advisors' briefing (${j.advisors.date}):**`);
       for (const [role, label] of [['economy', 'Economic advisor'], ['diplomacy', 'Diplomat'], ['military', 'Military advisor']]) {

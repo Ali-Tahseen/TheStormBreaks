@@ -39,6 +39,7 @@ ACTIONS you may emit (JSON objects in an "actions" array). Use nation TAGS (e.g.
 - {"type":"occupy_territory","territory":NAME,"occupier":TAG,"delta":PERCENT_CHANGE,"reason":TEXT}   (or "percent" for an absolute value 0-100; partial control of a territory)
 - {"type":"liberate_territory","territory":NAME,"occupier":TAG_OPTIONAL,"percent":OPTIONAL,"by":TAG,"reason":TEXT}
 - {"type":"annex_territory","territory":NAME,"new_owner":TAG,"reason":TEXT}   (full, formal transfer — only after a territory is fully conquered or ceded by treaty)
+- {"type":"capitulate","country":TAG,"occupier":TAG_OPTIONAL,"percent":OPTIONAL,"territories":[NAMES_OPTIONAL],"reason":TEXT}   (a nation surrenders, signs an armistice or its government falls: it leaves the war. It keeps any land not occupied or annexed. Give "occupier" to mark how much of its remaining land the victor now holds.)
 - {"type":"declare_war","attacker":TAG,"defender":TAG}
 - {"type":"make_peace","a":TAG,"b":TAG}
 - {"type":"join_faction","country":TAG,"faction":${Object.keys(scenario.factions).map(f => `"${f}"`).join('|')}|NEW_NAME}
@@ -72,6 +73,7 @@ The student plays ${state.nations[state.player].name}. Each turn they type an or
 3. Decide how many months pass (1-6; small tactical orders 1 month, economic plans or long campaigns 3-6).
 4. Write what happened as a short, vivid history-book narrative (2-3 paragraphs, under 220 words total) that blends real history with the student's changes.
 5. Emit ACTIONS that make the game state match the narrative — every number you change must be explained by the story.
+6. The map only changes through actions. If your narrative says a nation surrendered, capitulated, was defeated or lost/gained land, you MUST emit the matching capitulate / occupy_territory / annex_territory / liberate_territory action. Never describe a map change without its action, and never invent an action the narrative does not explain.
 ${realism}
 ${actionSpec(scenario)}
 ${SAFETY}
@@ -84,8 +86,7 @@ Respond with JSON only, in exactly this shape:
   "time_advance_months": 1,
   "headline": "newspaper-style headline, max 12 words",
   "narrative": "the story of what happened",
-  "actions": [ ... ],
-  "advisor_notes": ["+ Industry: factories converted to tanks", "- Stability: strikes in the Ruhr"]
+  "actions": [ ... ]
 }`;
 }
 
@@ -274,8 +275,7 @@ function cleanGM(j) {
     time_advance_months: Math.max(1, Math.min(6, Math.round(Number(j.time_advance_months) || 1))),
     headline: String(j.headline || 'Events unfold').slice(0, 140),
     narrative: String(j.narrative || '').slice(0, 4000),
-    actions: Array.isArray(j.actions) ? j.actions : [],
-    advisor_notes: (Array.isArray(j.advisor_notes) ? j.advisor_notes : []).map(String).slice(0, 10)
+    actions: Array.isArray(j.actions) ? j.actions : []
   };
 }
 function cleanRivals(j) {
@@ -303,6 +303,21 @@ function cleanLesson(j) {
 }
 
 // ---------------- the turn pipeline ----------------
+const TERRITORY_ACTIONS = ['occupy_territory', 'liberate_territory', 'annex_territory', 'capitulate'];
+
+// Does the Game Master's prose claim a territorial or surrender change?
+function claimsMapChange(gm) {
+  if (!['success', 'partial'].includes(gm.feasibility)) return false;
+  return /capitulat|surrend|armistice|annex|conquer|falls?\b|fell\b|occupi|seiz|liberat/i.test(`${gm.headline} ${gm.narrative}`);
+}
+
+// The narrative claims a map change but the actions do not make one. Catches
+// the failure mode where the model narrates a map change but forgets the
+// action, leaving the map out of date (e.g. France "capitulates" in the story).
+function gmDiverges(gm) {
+  return claimsMapChange(gm) && !gm.actions.some(a => TERRITORY_ACTIONS.includes(a.type));
+}
+
 /**
  * Resolve one player order. Mutates `state`.
  * @returns {Promise<object>} the journal entry for this turn
@@ -324,8 +339,23 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
   };
   let gm;
   if (useLLM) {
-    const r = await chatJSON(gameMasterSystem(state, lang), gmRequest, { temperature: 0.8, maxTokens: 2500 });
+    const gmSystem = gameMasterSystem(state, lang);
+    const gmCall = (request, temperature) => chatJSON(gmSystem, request, { temperature, maxTokens: 3500 });
+    let r = await gmCall(gmRequest, 0.8);
     gm = cleanGM(r.json);
+    // If the narrative claims a map change but no territory action was emitted,
+    // ask once more for the matching actions. This is the failure mode that
+    // left France "capitulated" in the story but unchanged on the map.
+    if (gmDiverges(gm)) {
+      const retryRequest = {
+        ...gmRequest,
+        correction: 'Your previous answer described a territorial or surrender change but emitted no matching territory action. Keep the same outcome and add the correct actions (capitulate / occupy_territory / annex_territory / liberate_territory).'
+      };
+      r = await gmCall(retryRequest, 0.6);
+      const gm2 = cleanGM(r.json);
+      debug.agents.push({ agent: 'Game Master', note: 'corrective retry after narrative/action divergence', ms: r.ms, request: retryRequest, response: r.json });
+      gm = gm2;
+    }
     debug.agents.push({ agent: 'Game Master', ms: r.ms, request: gmRequest, response: r.json });
   } else {
     gm = cleanGM(mockGameMaster(state, order));
@@ -333,6 +363,9 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
   }
 
   const gmResult = applyActions(state, gm.actions, { source: 'game_master' });
+  if (claimsMapChange(gm) && !gmResult.applied.some(a => TERRITORY_ACTIONS.includes(a.type))) {
+    debug.agents.push({ agent: 'Game Master', warning: 'Narrative describes a territorial or surrender change but no such action was applied; the map may not match the story.' });
+  }
   const months = advanceTime(state, gm.time_advance_months);
   const dateAfter = { ...state.date };
 
@@ -415,7 +448,6 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
     feasibilityReason: gm.feasibility_reason,
     headline: gm.headline,
     narrative: gm.narrative,
-    advisorNotes: gm.advisor_notes,
     reactions: rivals.reactions,
     advisors,
     lesson,

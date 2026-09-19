@@ -129,7 +129,6 @@ Returned by `POST /api/report` and stored on the state as `report`. The `metrics
   "feasibilityReason": "...",
   "headline": "...",
   "narrative": "...",
-  "advisorNotes": ["+ Industry: ...", "- Stability: ..."],   // the Game Master's short effect notes
   "reactions": [ { "country": "UK", "leader": "...", "statement": "...", "intent": "..." } ],
   "advisors": { /* the briefing written after this turn, same shape as state.advisors */ },
   "lesson": {

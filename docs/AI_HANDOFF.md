@@ -11,7 +11,7 @@ Stack: Node.js ≥ 18.17 (ES modules), Express 5, dotenv, vanilla JS frontend wi
 ## Hard rules (keep these)
 
 1. **Only `server/engine.js` changes game state.** Agents, MCP and the frontend go through `applyActions()` or the REST API. Never let model output write into `state` directly.
-2. **Every new capability is an action type** with validation in `APPLY`, a line in `ACTION_SPEC` (`server/agents.js`), docs in `docs/ACTIONS.md`, and a test.
+2. **Every new capability is an action type** with validation in `APPLY`, a line in `actionSpec()` (`server/agents.js`), docs in `docs/ACTIONS.md`, and a test.
 3. **Agents return JSON only**, cleaned by `cleanGM` / `cleanRivals` / `cleanLesson`. Add new fields there with defaults and length limits.
 4. **Offline mode must keep working.** If you change an agent's output shape, update `server/mock.js` to match.
 5. **Student safety** (`SAFETY` in `agents.js`): no graphic content, atrocities never playable, Holocaust taught accurately, invented dialogue never presented as real quotes. Don't weaken this.

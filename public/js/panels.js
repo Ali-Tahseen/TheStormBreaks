@@ -300,11 +300,6 @@ export function logHTML(state, { audio = false } = {}) {
       <h3>${audio ? `<button type="button" class="narrate" data-narrate="${j.turn}" aria-pressed="false" aria-label="Play headline and summary">Play</button>` : ''}${esc(j.headline)}<span class="feas ${esc(j.feasibility)}">${esc(j.feasibility)}</span></h3>
       ${j.feasibilityReason ? `<p class="reason">${esc(j.feasibilityReason)}</p>` : ''}
       ${String(j.narrative).split(/\n{2,}/).map(p => `<p>${esc(p)}</p>`).join('')}
-      ${j.advisorNotes?.length ? `<ul class="notes">${j.advisorNotes.map(a => {
-        const s = String(a).trim();
-        const cls = s.startsWith('+') ? 'up' : /^[-−–]/.test(s) ? 'down' : '';
-        return `<li class="${cls}">${esc(s)}</li>`;
-      }).join('')}</ul>` : ''}
       ${(j.reactions || []).map(r => `
         <div class="reaction"><b>${esc(r.leader || r.country)}</b> <span class="tag">(${esc(state.nations[r.country]?.name || r.country)}, in-game dialogue)</span><br>${esc(r.statement)}</div>`).join('')}
     </div>`).join('');
