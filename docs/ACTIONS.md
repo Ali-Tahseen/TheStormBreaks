@@ -27,7 +27,7 @@ Actions are the only way anything changes the game. The AI agents return them in
 
 Every other territory becomes its own minor nation with a tag made from its name, e.g. `SWEDEN`, `TURKEY`, `SAUDI_ARABIA`, `TIBET`.
 
-In the **China's War of Resistance** scenario, `CCP` is the Chinese Communist Party (leader Mao Zedong). It owns no province; its base areas are occupation stripes inside Nationalist territory (`Northwest China`, `North China`). The scenario also defines the `United Front` faction and disables the great powers as playable options.
+In the **China's War of Resistance** scenario, `CCP` is the Chinese Communist Party (leader Mao Zedong). It owns its northwestern base area (`Northwest China`); its other base areas are occupation stripes inside Nationalist territory (`North China`). The scenario also defines the `United Front` faction and disables the great powers as playable options.
 
 Some large nations are split into several territories so partial conquests show clearly: the USSR (European Russia, Urals and Siberia, Soviet Far East, Soviet Ukraine, Soviet Belarus, Transcaucasia, Soviet Central Asia), China (North, East, Central, South, Southwest, Northwest China, Inner Mongolia, Xinjiang), Poland (Poland, Eastern Poland) and Germany (Germany, East Prussia, Austria, Bohemia and Moravia, Danzig). A nation is defeated only when it has lost all of its territories.
 

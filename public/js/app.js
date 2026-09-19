@@ -300,9 +300,13 @@ function wireStartSheet(saves) {
 
 async function startGame(form) {
   const fd = new FormData(form);
+  // The scenario radios sit outside the form (in the briefing column), so they
+  // are not part of FormData — read the checked one from the sheet directly.
+  const scenarioId = document.querySelector('#start input[name="scenario"]:checked')?.value
+    || app.info.scenarios?.[0]?.id;
   try {
     app.state = await api.newGame({
-      scenarioId: fd.get('scenario'), player: fd.get('player'), studentName: fd.get('studentName'),
+      scenarioId, player: fd.get('player'), studentName: fd.get('studentName'),
       realism: fd.get('realism'), lang: fd.get('lang')
     });
     const sc = activeScenario();

@@ -73,4 +73,4 @@ Data contracts are in `docs/API.md` (state and journal shapes) and `docs/ACTIONS
 - No teacher dashboard; journals and reports are exported per student as Markdown/JSON.
 - The UI chrome is English only; AI-generated text can be English or Chinese.
 - Two scenarios share `world-1939.json`. The registry and frontend support a different `mapFile` per scenario (the page reloads when it changes), but no second map has been built yet.
-- The CCP has no owned province in the China scenario; it is represented by occupation stripes. A province-level China map would make the civil-war-era fronts sharper.
+- The CCP owns its northwestern base area (`Northwest China`) in the China scenario; its other base areas are represented by occupation stripes. A province-level China map would make the civil-war-era fronts sharper.

@@ -15,7 +15,7 @@ At the end of the lesson (or when a group wants to stop), click **Finish Game**.
 
 ## Running the China campaign
 
-**China's War of Resistance** starts in September 1939 with the Second Sino-Japanese War already two years old. Students can play the Nationalists (Chiang Kai-shek), the Communists (Mao Zedong) or Japan. The CCP has no province of its own — its base areas appear as occupation stripes inside Nationalist territory, which is a good prompt for discussing the uneasy Second United Front. The **China** map view zooms to the theatre. The same lesson flow and report work as in the WWII campaign.
+**China's War of Resistance** starts in September 1939 with the Second Sino-Japanese War already two years old. Students can play the Nationalists (Chiang Kai-shek), the Communists (Mao Zedong) or Japan. The CCP owns its northwestern base area around Yan'an, while its other base areas appear as occupation stripes inside Nationalist territory — a good prompt for discussing the uneasy Second United Front. The **China** map view zooms to the theatre. The same lesson flow and report work as in the WWII campaign.
 
 ## Assessment ideas
 

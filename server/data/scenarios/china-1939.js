@@ -4,7 +4,8 @@
 // This scenario is pure data. It reuses the 1939 world map and the world
 // powers from the WWII scenario, then overrides China and adds the Chinese
 // Communist Party (CCP) as an uneasy ally of the Nationalist government.
-// The CCP has no owned province; its base areas are shown as occupation
+// The CCP owns its northwestern base area (Shaanxi–Gansu–Ningxia, around
+// Yan'an); its other base areas behind Japanese lines are shown as occupation
 // stripes inside Nationalist territory.
 
 import { SCENARIO as WW2 } from './ww2-1939.js';
@@ -89,18 +90,20 @@ export const SCENARIO = {
     }
   },
 
-  territoryOwners: { ...WW2.territoryOwners },
+  // The Communist base area around Yan'an is CCP-held; the rest of China
+  // stays with the Nationalist government.
+  territoryOwners: { ...WW2.territoryOwners, 'Northwest China': 'CCP' },
 
   ignoredTerritories: WW2.ignoredTerritories,
 
-  // Japanese-held coast and cities, plus Communist base areas behind the lines.
+  // Japanese-held coast and cities, plus Communist guerrilla base areas behind
+  // the lines (the CCP's own northwestern base area is owned, not occupied).
   startOccupation: {
     'North China':    { JAP: 55, CCP: 20 },
     'East China':     { JAP: 55 },
     'Central China':  { JAP: 30 },
     'South China':    { JAP: 25 },
-    'Inner Mongolia': { JAP: 45 },
-    'Northwest China': { CCP: 35 }
+    'Inner Mongolia': { JAP: 45 }
   },
 
   startWars: [

@@ -88,7 +88,12 @@ export function createGame(opts = {}, mapNames = []) {
     relations[relKey(a, b)] = v;
   }
 
-  const player = nations[opts.player] && nations[opts.player].playable ? opts.player : 'GER';
+  // If the requested nation is missing or not playable in this scenario, fall
+  // back to the first playable nation of THAT scenario (not hard-coded GER, or
+  // a China campaign could silently turn into Nazi Germany).
+  const player = nations[opts.player] && nations[opts.player].playable
+    ? opts.player
+    : Object.keys(nations).find(tag => nations[tag].playable) || 'GER';
 
   const state = {
     id: `game-${Date.now()}`,

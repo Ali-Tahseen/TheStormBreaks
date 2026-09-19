@@ -110,7 +110,7 @@ Small local models may produce weaker history or invalid actions. Invalid action
 
 ## Campaigns and the after-action report
 
-Choose a campaign and a nation on the start screen. Both campaigns share the 1939 world map; the China campaign adds a **China** map view and the Chinese Communist Party as an AI ally (its base areas appear as occupation stripes).
+Choose a campaign and a nation on the start screen. Both campaigns share the 1939 world map; the China campaign adds a **China** map view and the Chinese Communist Party as an AI ally (it owns its northwestern base area, with other base areas shown as occupation stripes).
 
 At any time, **Finish Game** ends the campaign and opens the **after-action report**. The engine first computes deterministic metrics from your saved game (territories gained and lost, indicator changes, wars started and ended, how plausible your orders were). An AI examiner then grades you on *historical realism*, *strategic effectiveness*, *economic management*, *diplomacy* and *decision quality*, names your most important decisions, and compares your timeline with real history. The engine clamps and combines the grades with fixed weights, so the overall score is reproducible. Without an API key, a fully deterministic offline report is produced instead. The report can be downloaded as Markdown or JSON, and is appended to the journal export.
 
@@ -145,7 +145,7 @@ See [docs/CLASSROOM.md](docs/CLASSROOM.md) for a lesson flow, assessment ideas a
 - Numbers are simplified game values. GDP figures are rough historical estimates (billions of 1990 international dollars).
 - One game runs per server. For a class, each student runs it on their own computer, or you host one copy per student.
 - AI narratives can contain mistakes. The lessons are anchored to the real-events list in `server/data/timelines/`, but teachers should still check them.
-- Both campaigns currently use the same 1939 world map. The China campaign is played at the regional scale of that map; the CCP is shown as occupation stripes rather than an owned province. The registry supports a different map per scenario if a province-level China map is built later.
+- Both campaigns currently use the same 1939 world map. The China campaign is played at the regional scale of that map; the CCP owns the northwestern base area and its other base areas appear as occupation stripes. The registry supports a different map per scenario if a province-level China map is built later.
 - The after-action report's written grades come from the AI; its metrics, weights and overall score are computed by the engine and are reproducible. In offline mode a fully deterministic report is produced.
 
 ## The map

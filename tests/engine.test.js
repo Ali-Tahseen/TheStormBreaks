@@ -40,7 +40,8 @@ test('China scenario is playable as the Nationalists or the Communists', () => {
   assert.equal(s.scenarioId, 'china-1939');
   assert.equal(s.player, 'CHN');
   assert.ok(s.nations.CCP, 'the CCP is present');
-  assert.equal(s.territories['Northwest China'].occupation.CCP, 35);
+  assert.equal(s.territories['Northwest China'].owner, 'CCP', 'the CCP holds its northwestern base area');
+  assert.equal(s.territories['North China'].occupation.CCP, 20, 'CCP base areas behind the lines are occupation stripes');
   assert.ok(s.wars.some(w => w.includes('JAP') && w.includes('CCP')));
   const ccp = createGame({ scenarioId: 'china-1939', player: 'CCP' }, names);
   assert.equal(ccp.player, 'CCP');
