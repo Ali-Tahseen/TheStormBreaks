@@ -53,7 +53,12 @@ function withSentenceEnd(text) {
 }
 
 function spokenHeadline(text) {
-  return withSentenceEnd(lowercaseAfterFirstWord(text));
+  const clauses = String(text || '')
+    .split(/[;:]+/)
+    .map((part) => lowercaseAfterFirstWord(part.trim()))
+    .filter(Boolean);
+  if (!clauses.length) return withSentenceEnd(String(text || '').trim());
+  return clauses.map((clause) => withSentenceEnd(clause)).join(' ');
 }
 
 export function textForKind(entry, kind) {
@@ -100,7 +105,7 @@ export async function streamClip(game, { turn, kind } = {}, req, res) {
   const c = cfg();
   const lang = game.lang || 'en';
   const hash = createHash('sha256')
-    .update(`${c.voiceId}\0${c.modelId}\0${lang}\0${kindId}\0${text}`)
+    .update(`${c.voiceId}\0${c.modelId}\0${lang}\0${kindId}\0${text}\0synth:punct-stable`)
     .digest('hex');
   const file = path.join(CACHE_DIR, `${hash}.mp3`);
   const part = path.join(CACHE_DIR, `${hash}.part`);
@@ -109,8 +114,8 @@ export async function streamClip(game, { turn, kind } = {}, req, res) {
     const size = fs.statSync(file).size;
     res.set({
       'Content-Type': 'audio/mpeg',
-      'Content-Length': size,
-      'Cache-Control': 'private, max-age=120'
+      'Cache-Control': 'private, max-age=120',
+      'Content-Length': size
     });
     try {
       await pipeline(fs.createReadStream(file), res);
@@ -165,7 +170,13 @@ async function synthesizeStream(text, lang, { req, res, file, part }) {
   const c = cfg();
   const body = {
     text,
-    model_id: c.modelId
+    model_id: c.modelId,
+    voice_settings: {
+      stability: 0.7,
+      similarity_boost: 0.75,
+      style: 0,
+      use_speaker_boost: true
+    }
   };
   const languageCodeValue = languageCode(lang, c.modelId);
   if (languageCodeValue) body.language_code = languageCodeValue;
