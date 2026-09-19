@@ -1,6 +1,11 @@
 # The Storm Breaks
 
-A text-driven Second World War strategy game for history classrooms. Students lead a nation from 1 September 1939 by typing orders in plain language. AI agents decide what happens, the world map changes, and after every turn a short lesson compares the student's alternate timeline with what really happened.
+A text-driven Second World War strategy game for history classrooms. Students lead a nation by typing orders in plain language. AI agents decide what happens, the world map changes, and after every turn a short lesson compares the student's alternate timeline with what really happened. When the campaign ends, a **Finish Game** button produces a graded after-action report.
+
+Two campaigns ship with the game:
+
+- **The Storm Breaks** — World War II from 1 September 1939.
+- **China's War of Resistance** — China against Japan, 1939–1945, playable as the Nationalists (CHN), the Communists (CCP) or Japan.
 
 Inspired by Hearts of Iron, but built for a 40-minute lesson: no menus or tech trees, just a map, indicators, and a text box.
 
@@ -50,6 +55,8 @@ Backend packages it as JSON: order + world state + real events near this date
 Updated state ──► frontend re-renders map, indicators, log, lesson
 ```
 
+Every scenario is a data file in `server/data/scenarios/` (nations, map, timeline, briefing, suggestions). The engine, agents and offline demo resolve everything through a scenario registry, so adding a campaign is new data, not new code.
+
 The key idea: **the AI never changes the game directly.** It returns a list of actions such as
 
 ```json
@@ -64,13 +71,15 @@ Full list of actions: [docs/ACTIONS.md](docs/ACTIONS.md).
 
 ```
 server/
-  index.js            Express server: REST API, saves, live updates (SSE), journal export
+  index.js            Express server: REST API, saves, live updates (SSE), journal + report export
   engine.js           Game state + the ONLY code that changes it (action whitelist, validation)
-  agents.js           The three AI agents: prompts, JSON cleaning, turn pipeline
+  agents.js           The AI agents: prompts, JSON cleaning, turn pipeline, after-action report
+  report.js           Deterministic campaign metrics + score combination
   llm.js              OpenAI-compatible client (DeepSeek default), JSON parsing + retry
   mock.js             Offline demo mode: keyword rules returning the same JSON shape
-  data/scenario1939.js  Nations, colours, 1939 borders, starting wars/relations, aliases
-  data/timeline.js      Real WWII events used to anchor the lessons
+  data/scenarios/       One data file per campaign + the registry (index.js)
+  data/timelines/       Real historical events per campaign, used to anchor the lessons
+  data/timeline.js      Generic helpers for querying a scenario's timeline
 public/
   index.html          Page shell
   css/style.css       All styling
@@ -98,6 +107,12 @@ LLM_MODEL=qwen2.5:14b
 ```
 
 Small local models may produce weaker history or invalid actions. Invalid actions are rejected safely, so the game keeps working.
+
+## Campaigns and the after-action report
+
+Choose a campaign and a nation on the start screen. Both campaigns share the 1939 world map; the China campaign adds a **China** map view and the Chinese Communist Party as an AI ally (its base areas appear as occupation stripes).
+
+At any time, **Finish Game** ends the campaign and opens the **after-action report**. The engine first computes deterministic metrics from your saved game (territories gained and lost, indicator changes, wars started and ended, how plausible your orders were). An AI examiner then grades you on *historical realism*, *strategic effectiveness*, *economic management*, *diplomacy* and *decision quality*, names your most important decisions, and compares your timeline with real history. The engine clamps and combines the grades with fixed weights, so the overall score is reproducible. Without an API key, a fully deterministic offline report is produced instead. The report can be downloaded as Markdown or JSON, and is appended to the journal export.
 
 ## Optional: MCP
 
@@ -129,7 +144,9 @@ See [docs/CLASSROOM.md](docs/CLASSROOM.md) for a lesson flow, assessment ideas a
 - The map is built from modern provinces grouped into 1939 territories, with approximate cuts where a 1939 border crossed a modern province (the Polish–Soviet line, Danzig, southern Slovakia, Finnish Karelia and Petsamo, southern Sakhalin, Istria, Spanish Morocco). Expect errors of roughly 10–30 km. Smaller 1939 details are not drawn: German Upper Silesia is shown as Polish, Zaolzie as German, and the Pskov border districts as Soviet. See "The map" below.
 - Numbers are simplified game values. GDP figures are rough historical estimates (billions of 1990 international dollars).
 - One game runs per server. For a class, each student runs it on their own computer, or you host one copy per student.
-- AI narratives can contain mistakes. The lessons are anchored to the real-events list in `server/data/timeline.js`, but teachers should still check them.
+- AI narratives can contain mistakes. The lessons are anchored to the real-events list in `server/data/timelines/`, but teachers should still check them.
+- Both campaigns currently use the same 1939 world map. The China campaign is played at the regional scale of that map; the CCP is shown as occupation stripes rather than an owned province. The registry supports a different map per scenario if a province-level China map is built later.
+- The after-action report's written grades come from the AI; its metrics, weights and overall score are computed by the engine and are reproducible. In offline mode a fully deterministic report is produced.
 
 ## The map
 

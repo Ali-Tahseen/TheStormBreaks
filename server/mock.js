@@ -5,18 +5,19 @@
 // the JSON → action pipeline. They return JSON in EXACTLY the same shape as the
 // real agents, so everything downstream is identical.
 
-import { ALIASES, TERRITORY_ALIASES } from './data/scenario1939.js';
+import { getScenario } from './data/scenarios/index.js';
 import { resolveNation, atWar, warsOf, formatDate } from './engine.js';
-import { eventsBetween, eventsNear, TIMELINE } from './data/timeline.js';
+import { eventsBetween, eventsNear } from './data/timeline.js';
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Find nations and territories mentioned in the text, with their position.
 function scanMentions(state, text) {
+  const scenario = getScenario(state.scenarioId);
   const lower = ' ' + text.toLowerCase() + ' ';
   const nations = [], territories = [];
   const nationNames = new Map();
-  for (const [alias, tag] of Object.entries(ALIASES)) nationNames.set(alias, tag);
+  for (const [alias, tag] of Object.entries(scenario.aliases)) nationNames.set(alias, tag);
   for (const n of Object.values(state.nations)) if (!n.minor) nationNames.set(n.name.toLowerCase(), n.tag);
   for (const [name, tag] of nationNames) {
     const m = lower.match(new RegExp(`[^a-z]${esc(name)}[^a-z]`));
@@ -24,7 +25,7 @@ function scanMentions(state, text) {
   }
   const terrNames = new Map();
   for (const name of Object.keys(state.territories)) terrNames.set(name.toLowerCase(), name);
-  for (const [alias, name] of Object.entries(TERRITORY_ALIASES)) terrNames.set(alias, name);
+  for (const [alias, name] of Object.entries(scenario.territoryAliases)) terrNames.set(alias, name);
   for (const [lname, name] of terrNames) {
     const m = lower.match(new RegExp(`[^a-z]${esc(lname)}[^a-z]`));
     if (m) territories.push({ name, pos: m.index });
@@ -147,9 +148,9 @@ export function mockGameMaster(state, order) {
     story.push('Radio broadcasts and posters worked to shape public opinion.');
     notes.push('+ War support: propaganda');
   }
-  const faction = text.match(/\b(allies|axis|comintern)\b/);
+  const faction = text.match(/\b(allies|axis|comintern|united front)\b/);
   if (faction && /(join|ally|alliance)/.test(text)) {
-    const f = faction[1][0].toUpperCase() + faction[1].slice(1);
+    const f = faction[1].replace(/\b\w/g, c => c.toUpperCase());
     actions.push({ type: 'join_faction', country: player, faction: f });
     actions.push({ type: 'add_event', title: `${P.name} joins the ${f}`, description: 'A new alignment reshapes the war.', category: 'diplomacy', territories: [P.home] });
     story.push(`${P.name} formally aligned itself with the ${f}.`);
@@ -191,17 +192,18 @@ export function mockRivals(state, gm) {
     });
     actions.push({ type: 'change_indicator', country: responder.tag, indicator: aggressive ? 'war_support' : 'stability', delta: aggressive ? 4 : 1, reason: 'Reaction to events' });
   }
-  if (aggressive && player !== 'USA') {
-    reactions.push({ country: 'USA', leader: state.nations.USA.leader, statement: 'The United States remains neutral, but American opinion is shifting.', intent: 'Watch Europe and Asia; consider aid to democracies.' });
+  if (aggressive && player !== 'USA' && state.nations.USA) {
+    reactions.push({ country: 'USA', leader: state.nations.USA.leader, statement: 'The United States remains neutral, but American opinion is shifting.', intent: 'Watch the war; consider aid to the embattled powers.' });
     actions.push({ type: 'change_indicator', country: 'USA', indicator: 'war_support', delta: 2, reason: 'News from abroad' });
   }
   return { reactions, actions };
 }
 
 export function mockTeacher(state, dateBefore, dateAfter, order) {
-  let events = eventsBetween(dateBefore, dateAfter);
-  if (!events.length) events = eventsNear(dateAfter, 0, 3);
-  if (!events.length) events = [TIMELINE[TIMELINE.length - 1]];
+  const scenario = getScenario(state.scenarioId);
+  let events = eventsBetween(scenario.timeline, dateBefore, dateAfter);
+  if (!events.length) events = eventsNear(scenario.timeline, dateAfter, 0, 3);
+  if (!events.length) events = [scenario.timeline[scenario.timeline.length - 1]];
   const e = events[0];
   return {
     lesson: {
@@ -213,5 +215,52 @@ export function mockTeacher(state, dateBefore, dateAfter, order) {
       reflection_question: `Why do you think the real leaders acted differently from you in ${formatDate(dateBefore)}? Give one reason.`,
       exam_skill: 'In an essay, compare two causes and explain which mattered more — use one real event from this period as evidence.'
     }
+  };
+}
+
+// Deterministic offline after-action report. Mirrors the shape the LLM returns
+// so cleanReport() and the frontend treat both identically.
+export function mockReport(state, metrics) {
+  const clamp = (n) => Math.max(0, Math.min(100, Math.round(n)));
+  const f = metrics.feasibility || {};
+  const decisions = (f.success || 0) + (f.partial || 0) + (f.failed || 0) + (f.refused || 0);
+  const successRate = decisions ? ((f.success || 0) + 0.5 * (f.partial || 0)) / decisions : 0.5;
+  const netTerritory = (metrics.territoriesGained?.length || 0) - (metrics.territoriesLost?.length || 0);
+  const econ = metrics.indicatorChanges || {};
+  const econScore = 50 + (econ.gdp || 0) * 0.15 + (econ.industry || 0) * 0.6 + (econ.resources || 0) * 0.3;
+  const realism = 40 + successRate * 50 - (metrics.playerCapitulated ? 20 : 0);
+  const strategic = 50 + netTerritory * 6 + (metrics.enemiesDefeated?.length || 0) * 10 - (metrics.playerCapitulated ? 30 : 0);
+  const diplomacy = 50 + (metrics.warsEnded?.length || 0) * 8 - (metrics.warsStarted?.length || 0) * 6;
+  const quality = 35 + successRate * 55;
+
+  const keyDecisions = [...state.journal].reverse().slice(0, 5).map(j => ({
+    turn: j.turn,
+    order: j.order,
+    outcome: j.headline,
+    impact: `${(j.changedTerritories || []).length ? `Changed ${j.changedTerritories.join(', ')}. ` : ''}${j.feasibility}.`,
+    rating: j.feasibility === 'success' ? 'wise' : j.feasibility === 'partial' ? 'mixed' : 'costly'
+  }));
+
+  const timelineDiff = (metrics.realEventsInPeriod || []).slice(0, 5).map(e => ({
+    real_history: e.title,
+    your_timeline: state.journal.find(j => j.dateBefore && e.date)?.headline || 'Your campaign followed a different course.'
+  }));
+
+  return {
+    summary: `You led ${metrics.player.name} for ${metrics.turns} turns to ${metrics.period.to}. You gained ${metrics.territoriesGained?.length || 0} territories and lost ${metrics.territoriesLost?.length || 0}. (Offline demo assessment — connect an LLM for a full examiner's report.)`,
+    grades: {
+      historical_realism: { score: clamp(realism), rationale: `${Math.round(successRate * 100)}% of your orders were judged plausible for the period.` },
+      strategic_effectiveness: { score: clamp(strategic), rationale: `Net territorial change: ${netTerritory >= 0 ? '+' : ''}${netTerritory}.` },
+      economic_management: { score: clamp(econScore), rationale: 'Based on GDP, industry and resource changes.' },
+      diplomacy: { score: clamp(diplomacy), rationale: `${(metrics.warsStarted?.length || 0)} wars started, ${(metrics.warsEnded?.length || 0)} ended.` },
+      decision_quality: { score: clamp(quality), rationale: 'Based on the success rate of your decisions.' }
+    },
+    key_decisions: keyDecisions,
+    timeline_diff: timelineDiff,
+    lessons: [
+      'Compare your choices with the real decisions of the period — the differences are the history.',
+      'Geography, industry and alliances limited what any leader could do.',
+      'A well-reasoned failure can teach more than an easy success.'
+    ]
   };
 }

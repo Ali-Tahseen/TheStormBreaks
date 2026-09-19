@@ -3,17 +3,26 @@
 import { api, listen } from './api.js';
 import { WorldMap } from './map.js';
 import {
-  esc, fmtDate, SUGGESTIONS, nationCard, indicatorTab, diplomacyTab, journalTab,
-  logHTML, lessonHTML, hoodHTML
+  esc, fmtDate, nationCard, indicatorTab, diplomacyTab, journalTab,
+  logHTML, lessonHTML, hoodHTML, reportHTML
 } from './panels.js';
 
 const $ = (sel) => document.querySelector(sel);
 const app = { info: null, state: null, selected: null, tab: 'economy', busy: false, map: null, lessonTurn: null };
 
+// The scenario description for the game currently loaded (from /api/info).
+function activeScenario() {
+  const id = app.state?.scenarioId;
+  return (app.info?.scenarios || []).find(s => s.id === id) || app.info?.scenario || {};
+}
+
 // ---------------- boot ----------------
 async function boot() {
-  const [info, topo] = await Promise.all([api.info(), fetch('/data/world-1939.json').then(r => r.json())]);
+  const info = await api.info();
+  const mapFile = info.scenario?.mapFile || 'world-1939.json';
+  const topo = await fetch(`/data/${mapFile}`).then(r => r.json());
   app.info = info;
+  app.mapFile = mapFile;
   $('#ai-mode').textContent = info.llm.configured ? `AI: ${info.llm.model}` : 'Offline demo mode';
 
   app.map = new WorldMap($('#map'), topo, {
@@ -31,7 +40,7 @@ async function boot() {
   if (app.state) {
     app.selected = app.state.player;
     renderAll();
-    app.map.view('world', false);
+    app.map.view(activeScenario().defaultView || 'world', false);
     if (app.state.gameOver) showEnding();
   } else {
     app.map.view('world', false);
@@ -77,16 +86,19 @@ function renderAll({ changed = [] } = {}) {
   renderMilestones();
   app.map.render(s, { selected: app.selected, changed });
   $('#send').disabled = app.busy || !!s.gameOver;
+  $('#btn-finish').disabled = !s || !!s.gameOver;
 }
 
 function renderLedger() {
   const s = app.state;
+  const sc = activeScenario();
+  const indInfo = sc.indicators ? sc : app.info;
   $('#nation-card').innerHTML = nationCard(s, app.selected || s.player);
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === app.tab)));
   let html;
   if (app.tab === 'diplomacy') html = diplomacyTab(s, app.selected);
   else if (app.tab === 'journal') html = journalTab(s);
-  else html = indicatorTab(s, app.info, app.tab, app.selected);
+  else html = indicatorTab(s, indInfo, app.tab, app.selected);
   $('#tab-body').innerHTML = html;
 }
 
@@ -97,7 +109,7 @@ function renderLog() {
 }
 
 function renderSuggestions() {
-  const list = SUGGESTIONS[app.state.player] || [];
+  const list = (activeScenario().suggestions || {})[app.state.player] || [];
   $('#suggestions').innerHTML = app.state.journal.length > 2 ? '' :
     list.map(t => `<button type="button" data-suggest="${esc(t)}">${esc(t)}</button>`).join('');
 }
@@ -210,37 +222,48 @@ function closeLesson() {
 }
 
 // ---------------- start screen ----------------
-async function openStart() {
-  const [nations, saves] = await Promise.all([api.playable(), api.saves().catch(() => [])]);
-  const info = app.info;
+function nationOptionsHTML(sc) {
+  return (sc.playable || []).map((n, i) => `
+    <label><input type="radio" name="player" value="${esc(n.tag)}" ${i === 0 ? 'checked' : ''}>
+      <span class="n"><span class="swatch" style="background:${esc(n.color)}"></span>${esc(n.name)}</span>
+      <span class="l">${esc(n.leader)}</span></label>`).join('');
+}
+
+function startSheetHTML(selectedId, saves, keep = {}) {
+  const scenarios = app.info.scenarios || [];
+  const sc = scenarios.find(s => s.id === selectedId) || scenarios[0] || { playable: [], briefing: [] };
   const cur = app.state;
-  const sheet = $('#start .sheet');
-  sheet.innerHTML = `
+  const lang = keep.lang || app.info.languages[0].id;
+  const realism = keep.realism || 'historical';
+  return `
     ${cur ? '<button class="close" data-close type="button" aria-label="Close">×</button>' : ''}
     <div>
-      <h1 id="start-title">${esc(info.scenario.title)}</h1>
-      <p class="dateline">${esc(info.scenario.startDate)}. Lead a nation through the Second World War.</p>
+      <h1 id="start-title">${esc(sc.title || app.info.scenario?.title || 'The Storm Breaks')}</h1>
+      <p class="dateline">${esc(sc.subtitle || '')}</p>
+      <div class="scenario-cards">
+        ${scenarios.map(s => `
+          <label class="scenario-card${s.id === selectedId ? ' selected' : ''}">
+            <input type="radio" name="scenario" value="${esc(s.id)}" ${s.id === selectedId ? 'checked' : ''}>
+            <span class="sc-title">${esc(s.title)}</span>
+            <span class="sc-sub">${esc(s.subtitle || '')}</span>
+          </label>`).join('')}
+      </div>
       <div class="briefing">
-        ${info.scenario.briefing.map(b => `<h3>${esc(b.heading)}</h3><p>${esc(b.text)}</p>`).join('')}
+        ${(sc.briefing || []).map(b => `<h3>${esc(b.heading)}</h3><p>${esc(b.text)}</p>`).join('')}
       </div>
     </div>
     <form class="picker" id="start-form">
       <h2>Choose your nation</h2>
-      <div class="nations">
-        ${nations.map((n, i) => `
-          <label><input type="radio" name="player" value="${esc(n.tag)}" ${i === 0 ? 'checked' : ''}>
-            <span class="n"><span class="swatch" style="background:${esc(n.color)}"></span>${esc(n.name)}</span>
-            <span class="l">${esc(n.leader)}</span></label>`).join('')}
-      </div>
-      <label class="field"><span>Your name (for the journal)</span><input type="text" name="studentName" maxlength="60" placeholder="Optional"></label>
+      <div class="nations">${nationOptionsHTML(sc)}</div>
+      <label class="field"><span>Your name (for the journal)</span><input type="text" name="studentName" maxlength="60" placeholder="Optional" value="${esc(keep.studentName || '')}"></label>
       <div class="field"><span>How strict is history?</span>
         <div class="radio-row">
-          <label><input type="radio" name="realism" value="historical" checked><b>Historical</b>Orders must be possible with the armies, money and politics of the time.</label>
-          <label><input type="radio" name="realism" value="sandbox"><b>Sandbox</b>Bold “what if” orders usually succeed, with realistic costs.</label>
+          <label><input type="radio" name="realism" value="historical" ${realism === 'historical' ? 'checked' : ''}><b>Historical</b>Orders must be possible with the armies, money and politics of the time.</label>
+          <label><input type="radio" name="realism" value="sandbox" ${realism === 'sandbox' ? 'checked' : ''}><b>Sandbox</b>Bold “what if” orders usually succeed, with realistic costs.</label>
         </div>
       </div>
       <label class="field"><span>Story language</span>
-        <select name="lang">${info.languages.map(l => `<option value="${esc(l.id)}">${esc(l.label)}</option>`).join('')}</select>
+        <select name="lang">${app.info.languages.map(l => `<option value="${esc(l.id)}" ${l.id === lang ? 'selected' : ''}>${esc(l.label)}</option>`).join('')}</select>
       </label>
       <div class="start-actions">
         <button class="btn primary" type="submit">Begin campaign</button>
@@ -248,23 +271,48 @@ async function openStart() {
       </div>
       ${saves.length ? `<div class="saves">Load a saved game: ${saves.slice(0, 6).map(s => `<button type="button" data-load="${esc(s.name)}">${esc(s.name)}</button>`).join('')}</div>` : ''}
     </form>`;
+}
+
+async function openStart() {
+  const saves = await api.saves().catch(() => []);
+  const scenarios = app.info.scenarios || [];
+  const selected = app.state?.scenarioId && scenarios.some(s => s.id === app.state.scenarioId)
+    ? app.state.scenarioId : scenarios[0]?.id;
+  const sheet = $('#start .sheet');
+  sheet.innerHTML = startSheetHTML(selected, saves);
   $('#start').hidden = false;
+  wireStartSheet(saves);
   sheet.querySelector('input[name=player]')?.focus();
+}
+
+function wireStartSheet(saves) {
+  const sheet = $('#start .sheet');
+  sheet.querySelectorAll('input[name=scenario]').forEach(r => r.addEventListener('change', () => {
+    const form = sheet.querySelector('#start-form');
+    const fd = new FormData(form);
+    sheet.innerHTML = startSheetHTML(r.value, saves, {
+      studentName: fd.get('studentName'), realism: fd.get('realism'), lang: fd.get('lang')
+    });
+    wireStartSheet(saves);
+  }));
 }
 
 async function startGame(form) {
   const fd = new FormData(form);
   try {
     app.state = await api.newGame({
-      player: fd.get('player'), studentName: fd.get('studentName'),
+      scenarioId: fd.get('scenario'), player: fd.get('player'), studentName: fd.get('studentName'),
       realism: fd.get('realism'), lang: fd.get('lang')
     });
+    const sc = activeScenario();
+    // A scenario may use a different map file; reload so the map geometry matches.
+    if (sc.mapFile && app.mapFile && sc.mapFile !== app.mapFile) { location.reload(); return; }
     app.selected = app.state.player;
     $('#start').hidden = true;
     $('#ending').hidden = true;
     closeLesson();
     renderAll();
-    app.map.view(['JAP', 'CHN'].includes(app.state.player) ? 'asia' : app.state.player === 'USA' ? 'world' : 'europe');
+    app.map.view(sc.defaultView || 'world');
     $('#order').focus();
   } catch (err) { toast(err.message, true); }
 }
@@ -276,20 +324,28 @@ async function openHood() {
   $('#hood').hidden = false;
 }
 
-function showEnding() {
+async function showEnding() {
   const s = app.state;
   const p = s.nations[s.player];
-  $('#ending .sheet').innerHTML = `
+  const sheet = $('#ending .sheet');
+  sheet.innerHTML = `
     <button class="close" data-close type="button" aria-label="Close">×</button>
     <h2>The campaign is over</h2>
-    <p>${esc(s.gameOver.reason)}</p>
-    <p>You led ${esc(p.name)} for ${s.journal.length} turns, reaching ${esc(fmtDate(s.date))}. Compare your path with real history in your journal, then answer the reflection questions you skipped.</p>
-    <p><b>Debrief question:</b> which of your decisions mattered most, and was the outcome caused more by your choices or by things you could not control (geography, economy, other leaders)?</p>
-    <div class="start-actions">
-      <a class="btn primary" href="/api/journal.md" download="leaders-journal.md">Download journal</a>
-      <button class="btn" type="button" data-newgame>New game</button>
-    </div>`;
+    <p>${esc(s.gameOver?.reason || 'The campaign has ended.')}</p>
+    <p>You led ${esc(p.name)} for ${s.journal.length} turns, reaching ${esc(fmtDate(s.date))}.</p>
+    <div id="report-box"><p class="empty">The examiner is writing your after-action report…</p></div>`;
   $('#ending').hidden = false;
+  if (s.report) {
+    $('#report-box').innerHTML = reportHTML(s.report, s);
+    return;
+  }
+  try {
+    const report = await api.report();
+    s.report = report;
+    $('#report-box').innerHTML = reportHTML(report, s);
+  } catch (err) {
+    $('#report-box').innerHTML = `<p class="error">The report could not be generated: ${esc(err.message)}</p>`;
+  }
 }
 
 let toastTimer;
@@ -357,6 +413,15 @@ function wireUI() {
 
   $('#btn-hood').addEventListener('click', openHood);
   $('#btn-menu').addEventListener('click', openStart);
+  $('#btn-finish').addEventListener('click', async () => {
+    if (!app.state || app.state.gameOver) return;
+    if (!confirm('End the campaign now and generate your after-action report?')) return;
+    try {
+      app.state = await api.finish();
+      renderAll();
+      showEnding();
+    } catch (err) { toast(err.message, true); }
+  });
   $('#btn-save').addEventListener('click', async () => {
     if (!app.state) return;
     const name = prompt('Name this save', `${app.state.nations[app.state.player].name}-${fmtDate(app.state.date)}`.replace(/\s+/g, '-'));
@@ -391,6 +456,15 @@ function wireUI() {
           r.rejected.map(x => `<li class="rej">Rejected: ${esc(x.reason)}</li>`).join('');
         renderAll({ changed: r.state.lastChangedTerritories });
       } catch (err) { toast(err.message, true); }
+    }
+    if (e.target.id === 'report-regen') {
+      const btn = e.target;
+      btn.disabled = true; btn.textContent = 'Regenerating…';
+      try {
+        const report = await api.report(true);
+        app.state.report = report;
+        $('#report-box').innerHTML = reportHTML(report, app.state);
+      } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = 'Regenerate with AI'; }
     }
   });
   $('#start').addEventListener('submit', (e) => { e.preventDefault(); startGame(e.target); });

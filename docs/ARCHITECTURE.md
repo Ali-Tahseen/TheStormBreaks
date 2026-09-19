@@ -5,7 +5,7 @@
 1. **The AI proposes, the engine decides.** Agents return JSON actions; only `server/engine.js` mutates state, after validation and clamping. A model can't break the game, and every change is auditable.
 2. **Narrative and numbers stay linked.** The Game Master writes the story *and* the actions in one response, so every number that changes is explained by the text.
 3. **The server owns the state.** The browser only renders what `/api/state` returns. This is why the MCP server and the browser can share one game.
-4. **Scenarios are data.** Everything specific to 1939 lives in `server/data/`. A new scenario is new data, not new code.
+4. **Scenarios are data.** Everything specific to a campaign lives in one object in `server/data/scenarios/`. The engine, agents, mock and API resolve values through `getScenario(state.scenarioId)`, so a new scenario is new data plus one registry line, not new code.
 5. **Works without a key.** `server/mock.js` returns the same JSON shapes as the real agents, so the whole pipeline can be tested offline.
 
 ## A turn, step by step (`runTurn` in `server/agents.js`)
@@ -29,11 +29,21 @@ If step 3 fails (network, bad key, invalid JSON twice), the server restores the 
 
 ## Prompts
 
-All prompts are in `server/agents.js`:
+All prompts are in `server/agents.js` and are built from the active scenario:
 
-- `ACTION_SPEC`: the action list the models see. Built from `INDICATORS`, so new indicators appear automatically.
+- `actionSpec(scenario)`: the action list the models see. Built from `scenario.indicators` and `scenario.factions`, so new indicators or factions appear automatically.
 - `SAFETY`: audience rules for students aged 12–18. Atrocities are never playable; the Holocaust is taught accurately; leader dialogue is labelled in-game and never passed off as real quotations.
-- `gameMasterSystem()`, `rivalsSystem()`, `teacherSystem()`: one per agent. Each ends with the exact JSON shape expected.
+- `gameMasterSystem()`, `rivalsSystem()`, `teacherSystem()`: one per agent. Each takes scenario text (era, setting, rival guidance, teacher context, timeline). Each ends with the exact JSON shape expected.
+- `reportSystem(scenario)`: the end-of-campaign examiner.
+
+## The after-action report
+
+`server/report.js` holds the deterministic half:
+
+- `computeMetrics(state)` diffs `state.initial` (a snapshot taken by `createGame`) against the current state: territories gained/lost, occupation changes, indicator changes, wars started/ended, enemies defeated, and how each order was judged. Given the same state it always returns the same object.
+- `scoreFromGrades(grades, weights)` clamps each rubric to 0–100 and combines it with fixed weights (`DEFAULT_WEIGHTS`, overridable per scenario) into one reproducible overall score and letter grade.
+
+`generateReport()` in `server/agents.js` builds the metrics, asks the LLM to grade the campaign and pick the most important decisions (temperature 0.2), cleans the JSON, and stores the combined report on `state.report` (cached; pass `regenerate` to redo). Without an API key, `mockReport()` in `server/mock.js` produces a deterministic report. The report is exposed through `POST /api/report`, `GET /api/report.json`, `GET /api/report.md`, and appended to the journal export.
 
 Language: the `lang` setting tells agents which language to use for text fields. JSON keys, action types and tags always stay in English.
 
@@ -48,10 +58,10 @@ DeepSeek JSON mode requires the word "json" in the prompt and `response_format: 
 
 ## Adding a scenario
 
-1. Copy `server/data/scenario1939.js` to e.g. `scenario1945-china.js` and edit `SCENARIO`, `NATIONS`, `TERRITORY_OWNERS`, `START_*`, and aliases.
-2. Add matching events to a timeline file.
-3. Today `engine.js` imports the 1939 file directly. To support several scenarios, turn those imports into a `SCENARIOS` registry keyed by id, store `scenarioId` in the state (it already is), and add a scenario picker to the start screen (`openStart()` in `app.js`).
-4. For a different year, copy `tools/build-map.mjs`, change the grouping tables and `CLIPS`, and write to a new file. The map loader expects a TopoJSON whose `objects.territories` geometries have `properties.name`; key `TERRITORY_OWNERS` by those names.
+1. Add a timeline in `server/data/timelines/<id>.js` (export a `TIMELINE` array).
+2. Add `server/data/scenarios/<id>.js` exporting a single `SCENARIO` object. The easiest start is to spread an existing scenario (`...WW2`) and override `id`, `title`, `startDate`/`endDate`, `mapFile`, `defaultView`, `briefing`, `timeline`, `nations`, `startWars`, `startRelations`, `startOccupation`, `aliases`, `territoryAliases`, `suggestions` and (optionally) `reportWeights`. See `china-1939.js`.
+3. Register it in `server/data/scenarios/index.js` (import + one line in `SCENARIOS`). It now appears on the start screen, in `/api/scenarios` and in `/api/info` automatically.
+4. For a different map, build a TopoJSON whose `objects.territories` geometries have `properties.name`, set `scenario.mapFile`, and key `territoryOwners` by those names. The frontend reloads when a scenario's `mapFile` differs from the loaded one.
 
 ## How the map is built (`tools/build-map.mjs`)
 

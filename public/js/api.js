@@ -15,11 +15,14 @@ async function request(method, url, body) {
 
 export const api = {
   info: () => request('GET', '/api/info'),
-  playable: () => request('GET', '/api/playable'),
+  scenarios: () => request('GET', '/api/scenarios'),
+  playable: (scenarioId) => request('GET', `/api/playable${scenarioId ? `?scenarioId=${encodeURIComponent(scenarioId)}` : ''}`),
   state: () => request('GET', '/api/state'),
   debug: () => request('GET', '/api/debug'),
   newGame: (opts) => request('POST', '/api/new', opts),
   turn: (order) => request('POST', '/api/turn', { order }),
+  finish: () => request('POST', '/api/finish', {}),
+  report: (regenerate = false) => request('POST', '/api/report', { regenerate }),
   actions: (actions) => request('POST', '/api/actions', { actions, source: 'manual' }),
   reflection: (turn, text) => request('POST', '/api/reflection', { turn, text }),
   settings: (s) => request('POST', '/api/settings', s),

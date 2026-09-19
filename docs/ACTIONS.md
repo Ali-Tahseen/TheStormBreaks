@@ -27,6 +27,8 @@ Actions are the only way anything changes the game. The AI agents return them in
 
 Every other territory becomes its own minor nation with a tag made from its name, e.g. `SWEDEN`, `TURKEY`, `SAUDI_ARABIA`, `TIBET`.
 
+In the **China's War of Resistance** scenario, `CCP` is the Chinese Communist Party (leader Mao Zedong). It owns no province; its base areas are occupation stripes inside Nationalist territory (`Northwest China`, `North China`). The scenario also defines the `United Front` faction and disables the great powers as playable options.
+
 Some large nations are split into several territories so partial conquests show clearly: the USSR (European Russia, Urals and Siberia, Soviet Far East, Soviet Ukraine, Soviet Belarus, Transcaucasia, Soviet Central Asia), China (North, East, Central, South, Southwest, Northwest China, Inner Mongolia, Xinjiang), Poland (Poland, Eastern Poland) and Germany (Germany, East Prussia, Austria, Bohemia and Moravia, Danzig). A nation is defeated only when it has lost all of its territories.
 
 ## Indicators
@@ -84,7 +86,7 @@ Full, formal transfer of ownership. Clears occupation. If the old owner has no t
 Declaring war also drops their relations to −60 or lower.
 
 ### `join_faction` / `leave_faction`
-Known factions: `Allies`, `Axis`, `Comintern`. Any other name creates a new bloc.
+Known factions come from the active scenario (`Allies`, `Axis`, `Comintern`; the China scenario adds `United Front`). Any other name creates a new bloc.
 ```json
 { "type": "join_faction", "country": "ITA", "faction": "Axis" }
 { "type": "leave_faction", "country": "ITA" }

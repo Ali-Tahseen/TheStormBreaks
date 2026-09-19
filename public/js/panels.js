@@ -10,19 +10,6 @@ export const warsOf = (state, tag) => state.wars.filter(w => w.includes(tag)).ma
 const relKey = (a, b) => [a, b].sort().join('|');
 export const relation = (state, a, b) => state.relations[relKey(a, b)] ?? 0;
 
-// Example orders per nation, shown as clickable suggestions.
-export const SUGGESTIONS = {
-  GER: ['Sign a trade deal with the Soviet Union for oil and grain', 'Build more U-boats to cut Britain’s supply lines', 'Offer Britain and France peace if they accept the conquest of Poland'],
-  UK: ['Blockade German ports with the Royal Navy', 'Ask the United States for loans and weapons', 'Send an army to help defend France'],
-  FRA: ['Launch an offensive into the Saar while Germany is busy in Poland', 'Extend the Maginot Line along the Belgian border', 'Ask Britain to send more divisions'],
-  USA: ['Change the Neutrality Acts so Britain and France can buy weapons', 'Build a two-ocean navy', 'Stay neutral and expand factories'],
-  SOV: ['Occupy eastern Poland as the secret pact allows', 'Demand military bases from the Baltic states', 'Speed up the Five-Year Plan in the Urals'],
-  JAP: ['Offer China a ceasefire', 'Sign a neutrality pact with the Soviet Union', 'Seize oil fields in the Dutch East Indies'],
-  ITA: ['Stay out of the war and trade with both sides', 'Modernise the army’s tanks', 'Invade Greece'],
-  CHN: ['Ask the Soviet Union and the USA for aid', 'Keep the united front with the Communists against Japan', 'Move factories inland to Chongqing'],
-  POL: ['Order a fighting retreat to the Romanian bridgehead', 'Urge Britain and France to attack in the west', 'Evacuate the gold reserves abroad']
-};
-
 // ---------- nation card ----------
 export function nationCard(state, tag) {
   const n = state.nations[tag];
@@ -178,4 +165,70 @@ export function hoodHTML(debug, info) {
     <textarea id="manual-actions">${esc(example)}</textarea>
     <div style="margin-top:8px"><button class="btn primary" id="apply-manual" type="button">Apply actions</button></div>
     <ul id="manual-result"></ul>`;
+}
+
+// ---------- end-of-campaign report ----------
+const titleCase = (s) => String(s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+export function reportHTML(report, state) {
+  if (!report) {
+    return `<p class="empty">The examiner is preparing your report…</p>`;
+  }
+  const o = report.overall || { score: 0, letter: '—', label: '' };
+  const grades = Object.entries(report.grades || {}).map(([k, g]) => `
+    <li class="grade">
+      <div class="g-head"><span>${esc(titleCase(k))}</span><b>${esc(g.score)}</b></div>
+      <span class="g-bar" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, g.score))}%"></i></span>
+      <p class="muted">${esc(g.rationale)}</p>
+    </li>`).join('');
+  const decisions = (report.key_decisions || []).map(d => `
+    <li class="decision ${esc(d.rating)}">
+      <div class="when">Turn ${esc(d.turn)} · ${esc(d.rating)}</div>
+      <div class="what">${esc(d.order)}</div>
+      <div>${esc(d.outcome)}</div>
+      <p class="muted">${esc(d.impact)}</p>
+    </li>`).join('') || '<li class="muted">No decisions recorded.</li>';
+  const diff = (report.timeline_diff || []).map(t => `
+    <tr><td>${esc(t.real_history)}</td><td>${esc(t.your_timeline)}</td></tr>`).join('');
+  const lessons = (report.lessons || []).map(l => `<li>${esc(l)}</li>`).join('');
+  const m = report.metrics || {};
+  const metrics = [
+    ['Turns played', m.turns ?? '—'],
+    ['Territories gained', (m.territoriesGained || []).length],
+    ['Territories lost', (m.territoriesLost || []).length],
+    ['Wars started', (m.warsStarted || []).length],
+    ['Wars ended', (m.warsEnded || []).length],
+    ['Enemies defeated', (m.enemiesDefeated || []).length]
+  ].map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('');
+
+  return `
+    <div class="report">
+      <div class="report-head">
+        <div>
+          <div class="kicker">After-action report · ${esc(state.nations[state.player]?.name || '')}</div>
+          <h2>${esc(report.period || '')}</h2>
+          <p class="muted">${esc(report.summary || '')}</p>
+        </div>
+        <div class="overall">
+          <div class="score">${esc(o.score)}<span>/100</span></div>
+          <div class="letter">${esc(o.letter)} — ${esc(o.label)}</div>
+        </div>
+      </div>
+      <h3>Grades</h3>
+      <ul class="grades">${grades}</ul>
+      <h3>Most important decisions</h3>
+      <ul class="report-decisions">${decisions}</ul>
+      ${diff ? `<h3>Real history vs your timeline</h3>
+        <table class="diff"><thead><tr><th>Real history</th><th>Your timeline</th></tr></thead><tbody>${diff}</tbody></table>` : ''}
+      ${lessons ? `<h3>Lessons</h3><ul class="report-lessons">${lessons}</ul>` : ''}
+      <h3>Campaign metrics</h3>
+      <table class="metrics">${metrics}</table>
+      <div class="start-actions">
+        <a class="btn" href="/api/report.md" download="campaign-report.md">Download report (Markdown)</a>
+        <a class="btn" href="/api/report.json" download="campaign-report.json">Download report (JSON)</a>
+        <a class="btn" href="/api/journal.md" download="leaders-journal.md">Download journal</a>
+        <button class="btn" type="button" id="report-regen">Regenerate with AI</button>
+      </div>
+      <p class="muted small">Scores are combined by the game engine with fixed weights; the written grades come from the AI examiner. Metrics are computed deterministically from your saved game.</p>
+    </div>`;
 }

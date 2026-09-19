@@ -8,14 +8,19 @@
 //                      writes a short lesson + reflection question.
 // Agents 2 and 3 run in parallel after agent 1.
 // Every agent returns JSON. Only server/engine.js changes the game state.
+//
+// All prompts are built from the active scenario (see server/data/scenarios/),
+// so the same pipeline drives any era.
 
 import {
   applyActions, advanceTime, snapshotIndicators, computeDeltas, checkGameOver,
-  summarizeForLLM, formatDate, monthIndex, fromIndex, INDICATORS, ACTION_TYPES
+  summarizeForLLM, formatDate, monthIndex, fromIndex, ACTION_TYPES
 } from './engine.js';
+import { getScenario } from './data/scenarios/index.js';
 import { eventsNear, eventsBetween } from './data/timeline.js';
 import { chatJSON, llmConfigured } from './llm.js';
-import { mockGameMaster, mockRivals, mockTeacher } from './mock.js';
+import { mockGameMaster, mockRivals, mockTeacher, mockReport } from './mock.js';
+import { computeMetrics, scoreFromGrades, applyWeights, DEFAULT_WEIGHTS } from './report.js';
 
 const LANGS = {
   en: 'English',
@@ -24,7 +29,7 @@ const LANGS = {
 };
 
 // ---------------- shared prompt fragments ----------------
-const ACTION_SPEC = `
+const actionSpec = (scenario) => `
 ACTIONS you may emit (JSON objects in an "actions" array). Use nation TAGS (e.g. "GER") and the exact territory names from the world data.
 - {"type":"change_indicator","country":TAG,"indicator":NAME,"delta":NUMBER,"reason":TEXT}
 - {"type":"set_indicator","country":TAG,"indicator":NAME,"value":NUMBER,"reason":TEXT}
@@ -33,12 +38,12 @@ ACTIONS you may emit (JSON objects in an "actions" array). Use nation TAGS (e.g.
 - {"type":"annex_territory","territory":NAME,"new_owner":TAG,"reason":TEXT}   (full, formal transfer — only after a territory is fully conquered or ceded by treaty)
 - {"type":"declare_war","attacker":TAG,"defender":TAG}
 - {"type":"make_peace","a":TAG,"b":TAG}
-- {"type":"join_faction","country":TAG,"faction":"Allies"|"Axis"|"Comintern"|NEW_NAME}
+- {"type":"join_faction","country":TAG,"faction":${Object.keys(scenario.factions).map(f => `"${f}"`).join('|')}|NEW_NAME}
 - {"type":"leave_faction","country":TAG}
 - {"type":"change_relation","a":TAG,"b":TAG,"delta":-40..40}
 - {"type":"set_leader","country":TAG,"leader":TEXT}
 - {"type":"add_event","title":TEXT,"description":TEXT,"category":"war"|"diplomacy"|"economy"|"politics"|"other","territories":[NAMES]}
-Indicators: ${Object.entries(INDICATORS).map(([k, v]) => `${k} (${v.min}-${v.max}${v.unit ? ' ' + v.unit : ''})`).join(', ')}.
+Indicators: ${Object.entries(scenario.indicators).map(([k, v]) => `${k} (${v.min}-${v.max}${v.unit ? ' ' + v.unit : ''})`).join(', ')}.
 Typical changes per turn are small: 1-10 points. GDP changes are a few percent. Big swings only for dramatic events.
 Use add_event only for milestones worth a place on the timeline (wars, treaties, conquests, regime change).`;
 
@@ -52,18 +57,19 @@ AUDIENCE AND SAFETY: players are school students aged about 12-18 using this in 
 
 // ---------------- 1. Game Master ----------------
 function gameMasterSystem(state, lang) {
+  const scenario = getScenario(state.scenarioId);
   const realism = state.realism === 'sandbox'
     ? 'REALISM MODE: sandbox. The student is exploring "what if" ideas. Let bold orders mostly succeed, but still show realistic costs and reactions.'
     : 'REALISM MODE: historical. Judge each order against the real capabilities of the time (distance, logistics, navies, industry, public opinion, politics). Impossible orders fail or partly succeed, and the narrative explains why — that explanation is the lesson.';
-  return `You are the Game Master of an educational grand-strategy game set in the Second World War (starting 1 September 1939). You are the game's rules engine.
+  return `You are the Game Master of an educational grand-strategy game set in ${scenario.era}, ${scenario.setting}. You are the game's rules engine.
 The student plays ${state.nations[state.player].name}. Each turn they type an order in plain language. You:
-1. Interpret the order (it may name several actions, or speak on behalf of other nations — e.g. "Germany takes 10% of Canada" — treat it as the player's intention for the story).
+1. Interpret the order (it may name several actions, or speak on behalf of other nations — treat it as the player's intention for the story).
 2. Judge feasibility: "success", "partial", "failed" or "refused".
 3. Decide how many months pass (1-6; small tactical orders 1 month, economic plans or long campaigns 3-6).
 4. Write what happened as a short, vivid history-book narrative (2-3 paragraphs, under 220 words total) that blends real history with the student's changes.
 5. Emit ACTIONS that make the game state match the narrative — every number you change must be explained by the story.
 ${realism}
-${ACTION_SPEC}
+${actionSpec(scenario)}
 ${SAFETY}
 Write all text fields in ${LANGS[lang] || 'English'}. Keep JSON keys, action types and tags in English.
 Respond with JSON only, in exactly this shape:
@@ -81,10 +87,11 @@ Respond with JSON only, in exactly this shape:
 
 // ---------------- 2. Rival Leaders ----------------
 function rivalsSystem(state, lang) {
-  return `You play the AI-controlled leaders of every nation EXCEPT ${state.nations[state.player].name} (the student's nation, tag ${state.player}) in an educational Second World War strategy game.
-Each leader acts in character and in line with their nation's real interests, ideology and historical strategy at this date (e.g. Britain and France honour guarantees; the USA stays officially neutral until attacked or provoked; Stalin is opportunistic and suspicious), but they REACT to what the student just did.
+  const scenario = getScenario(state.scenarioId);
+  return `You play the AI-controlled leaders of every nation EXCEPT ${state.nations[state.player].name} (the student's nation, tag ${state.player}) in an educational grand-strategy game set in ${scenario.era}.
+Each leader acts in character and in line with their nation's real interests, ideology and historical strategy at this date (${scenario.rivalGuidance}), but they REACT to what the student just did.
 Choose the 1-3 most relevant leaders to respond this turn. Give each a short in-game statement and emit actions ONLY for their own nations (never for ${state.player}). Keep effects modest unless the situation is dramatic.
-${ACTION_SPEC}
+${actionSpec(scenario)}
 ${SAFETY}
 Write text fields in ${LANGS[lang] || 'English'}. Keep JSON keys, action types and tags in English.
 Respond with JSON only:
@@ -95,8 +102,8 @@ Respond with JSON only:
 }
 
 // ---------------- 3. History Teacher ----------------
-function teacherSystem(lang) {
-  return `You are a friendly, precise history teacher for students aged 12-18 (e.g. preparing for HKDSE, IGCSE or AP history). After each turn of a Second World War simulation you write a short lesson comparing the student's alternate timeline with what REALLY happened in the same period.
+function teacherSystem(lang, scenario) {
+  return `You are a friendly, precise history teacher for students aged 12-18 (e.g. ${scenario.teacherContext}). After each turn of a simulation of ${scenario.era} you write a short lesson comparing the student's alternate timeline with what REALLY happened in the same period.
 Rules: only state real history you are confident about; use the "real_events" list as your anchor. Explain cause and consequence. Be encouraging, never preachy. Keep every field brief (the whole lesson under 200 words).
 ${SAFETY}
 Write text fields in ${LANGS[lang] || 'English'}. Keep JSON keys in English.
@@ -158,6 +165,7 @@ function cleanLesson(j) {
  * @returns {Promise<object>} the journal entry for this turn
  */
 export async function runTurn(state, order, { lang = 'en' } = {}) {
+  const scenario = getScenario(state.scenarioId);
   const useLLM = llmConfigured();
   const debug = { mode: useLLM ? 'llm' : 'offline-demo', agents: [] };
   const before = snapshotIndicators(state);
@@ -169,7 +177,7 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
     task: 'resolve_player_order',
     player_order: order,
     world: summarizeForLLM(state),
-    real_history_nearby: eventsNear(state.date, 1, 4).map(e => ({ date: e.date, title: e.title, summary: e.summary }))
+    real_history_nearby: eventsNear(scenario.timeline, state.date, 1, 4).map(e => ({ date: e.date, title: e.title, summary: e.summary }))
   };
   let gm;
   if (useLLM) {
@@ -197,7 +205,7 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
     student_nation: state.nations[state.player].name,
     student_order: order,
     game_outcome: { headline: gm.headline, narrative: gm.narrative, feasibility: gm.feasibility, reason: gm.feasibility_reason },
-    real_events: eventsBetween(dateBefore, dateAfter).concat(eventsNear(dateAfter, 0, 2))
+    real_events: eventsBetween(scenario.timeline, dateBefore, dateAfter).concat(eventsNear(scenario.timeline, dateAfter, 0, 2))
       .filter((e, i, arr) => arr.findIndex(x => x.date === e.date) === i)
       .map(e => ({ date: e.date, title: e.title, summary: e.summary, concepts: e.concepts }))
   };
@@ -207,7 +215,7 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
   if (useLLM) {
     const [rr, tr] = await Promise.allSettled([
       chatJSON(rivalsSystem(state, lang), rivalsRequest, { temperature: 0.8, maxTokens: 1500 }),
-      chatJSON(teacherSystem(lang), teacherRequest, { temperature: 0.4, maxTokens: 1200 })
+      chatJSON(teacherSystem(lang, scenario), teacherRequest, { temperature: 0.4, maxTokens: 1200 })
     ]);
     if (rr.status === 'fulfilled') {
       rivals = cleanRivals(rr.value.json);
@@ -260,6 +268,129 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
   debug.rejected = [...gmResult.rejected, ...rivalResult.rejected];
   state.lastTurnDebug = debug;
   return entry;
+}
+
+// ---------------- 4. End-of-campaign report ----------------
+function reportSystem(scenario, lang) {
+  return `You are the examiner writing the final after-action report for a student who has just finished an educational grand-strategy campaign set in ${scenario.era}, ${scenario.setting}. The student has now chosen to end the campaign.
+You are given deterministic metrics computed by the game engine (territory changes, indicator changes, wars, feasibility of decisions, alignment signals) and a summary of every turn. Grade the student on each rubric below from 0 to 100, where 50 is an average outcome, 70 is strong, 85+ is exceptional and below 30 is poor.
+Rubrics:
+- historical_realism: how closely the student's decisions and their timeline match what was actually possible and what really happened in this period. Reward plausible choices consistent with the era; penalise ahistorical leaps.
+- strategic_effectiveness: whether the student achieved their goals, held or expanded territory, and managed wars and alliances well.
+- economic_management: how well GDP, industry, resources and manpower were handled.
+- diplomacy: alliances, relations, treaties and the handling of other powers.
+- decision_quality: clarity, consistency and judgment across the whole campaign, including learning from setbacks.
+Then identify the 3-6 MOST IMPORTANT decisions the student made, and for each explain its consequence. Finally, compare the student's timeline with real history and give 3-5 short lessons.
+Use the metrics as evidence. Do not invent numbers that are not in the data. Be fair and encouraging, and remember the audience is students aged 12-18.
+${SAFETY}
+Write all text fields in ${LANGS[lang] || 'English'}. Keep JSON keys in English.
+Respond with JSON only:
+{
+  "summary": "3-5 sentence overall assessment",
+  "grades": {
+    "historical_realism": { "score": 0-100, "rationale": "1-2 sentences" },
+    "strategic_effectiveness": { "score": 0-100, "rationale": "1-2 sentences" },
+    "economic_management": { "score": 0-100, "rationale": "1-2 sentences" },
+    "diplomacy": { "score": 0-100, "rationale": "1-2 sentences" },
+    "decision_quality": { "score": 0-100, "rationale": "1-2 sentences" }
+  },
+  "key_decisions": [ { "turn": NUMBER, "order": "the order given", "outcome": "what happened", "impact": "why it mattered", "rating": "wise|mixed|costly" } ],
+  "timeline_diff": [ { "real_history": "what really happened", "your_timeline": "what happened in the game" } ],
+  "lessons": [ "one-sentence takeaway" ]
+}`;
+}
+
+function clampScore(v, fallback = 50) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : fallback;
+}
+
+function cleanReport(j, scenario) {
+  const g = j.grades || {};
+  const grade = (key) => {
+    const raw = g[key] || {};
+    return { score: clampScore(raw.score), rationale: String(raw.rationale || '').slice(0, 500) };
+  };
+  const keys = Object.keys(DEFAULT_WEIGHTS);
+  const grades = {};
+  for (const k of keys) grades[k] = grade(k);
+  return {
+    summary: String(j.summary || '').slice(0, 2000),
+    grades,
+    key_decisions: (Array.isArray(j.key_decisions) ? j.key_decisions : []).slice(0, 8).map(d => ({
+      turn: Math.max(0, Math.round(Number(d.turn) || 0)),
+      order: String(d.order || '').slice(0, 300),
+      outcome: String(d.outcome || '').slice(0, 400),
+      impact: String(d.impact || '').slice(0, 400),
+      rating: ['wise', 'mixed', 'costly'].includes(d.rating) ? d.rating : 'mixed'
+    })),
+    timeline_diff: (Array.isArray(j.timeline_diff) ? j.timeline_diff : []).slice(0, 10).map(t => ({
+      real_history: String(t.real_history || '').slice(0, 400),
+      your_timeline: String(t.your_timeline || '').slice(0, 400)
+    })),
+    lessons: (Array.isArray(j.lessons) ? j.lessons : []).map(String).slice(0, 8)
+  };
+}
+
+/**
+ * Generate (and cache) the end-of-campaign report. Deterministic metrics come
+ * from the engine; the grades come from the LLM and are combined by the engine
+ * with fixed weights, so the overall score is reproducible.
+ * @returns {Promise<object>} the stored report
+ */
+export async function generateReport(state, { lang = 'en', regenerate = false } = {}) {
+  if (state.report && !regenerate) return state.report;
+  const scenario = getScenario(state.scenarioId);
+  const metrics = computeMetrics(state);
+  const useLLM = llmConfigured();
+  const debug = { mode: useLLM ? 'llm' : 'offline-demo', agents: [] };
+
+  const request = {
+    task: 'write_after_action_report',
+    scenario: { id: scenario.id, title: scenario.title, era: scenario.era, start: scenario.startDate, end: scenario.endDate },
+    player: { tag: state.player, name: state.nations[state.player].name, leader: state.nations[state.player].leader },
+    metrics,
+    turns: state.journal.map(j => ({
+      turn: j.turn, date: j.dateBefore, order: j.order, feasibility: j.feasibility,
+      headline: j.headline, narrative: String(j.narrative || '').slice(0, 400),
+      deltas: j.deltas, changedTerritories: j.changedTerritories
+    })),
+    real_history: scenario.timeline
+      .filter(e => { const [y, m] = e.date.split('-').map(Number); const k = y * 12 + m - 1; return k >= monthIndex(scenario.startDate) && k <= monthIndex(state.date); })
+      .map(e => ({ date: e.date, title: e.title, summary: e.summary }))
+  };
+
+  let cleaned;
+  if (useLLM) {
+    try {
+      const r = await chatJSON(reportSystem(scenario, lang), request, { temperature: 0.2, maxTokens: 2200 });
+      cleaned = cleanReport(r.json, scenario);
+      debug.agents.push({ agent: 'Campaign Examiner', ms: r.ms, request, response: r.json });
+    } catch (err) {
+      cleaned = cleanReport(mockReport(state, metrics), scenario);
+      debug.agents.push({ agent: 'Campaign Examiner', error: err.message, request, fallback: 'offline report used' });
+    }
+  } else {
+    cleaned = cleanReport(mockReport(state, metrics), scenario);
+    debug.agents.push({ agent: 'Campaign Examiner (offline demo)', ms: 0, request, response: cleaned });
+  }
+
+  const overall = scoreFromGrades(cleaned.grades, applyWeights(scenario));
+  state.report = {
+    generatedAt: new Date().toISOString(),
+    scenarioId: scenario.id,
+    player: state.player,
+    playerName: state.nations[state.player].name,
+    turns: state.journal.length,
+    period: `${formatDate(scenario.startDate)} – ${formatDate(state.date)}`,
+    metrics,
+    ...cleaned,
+    overall,
+    weights: applyWeights(scenario),
+    engine: { deterministicMetrics: true, weights: applyWeights(scenario), grader: useLLM ? 'llm' : 'offline' }
+  };
+  state.lastReportDebug = debug;
+  return state.report;
 }
 
 export { monthIndex, fromIndex, ACTION_TYPES };

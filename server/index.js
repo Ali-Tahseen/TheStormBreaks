@@ -8,10 +8,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createGame, applyActions, INDICATORS, FACTIONS, SCENARIO, ACTION_TYPES, formatDate, checkGameOver } from './engine.js';
-import { runTurn } from './agents.js';
+import { createGame, applyActions, ACTION_TYPES, formatDate, checkGameOver } from './engine.js';
+import { runTurn, generateReport } from './agents.js';
 import { llmInfo } from './llm.js';
-import { TIMELINE } from './data/timeline.js';
+import { getScenario, listScenarios, scenarioSummary, DEFAULT_SCENARIO_ID } from './data/scenarios/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -21,10 +21,16 @@ const PORT = Number(process.env.PORT || 3000);
 
 fs.mkdirSync(SAVES, { recursive: true });
 
-// Territory names come straight from the map file so server and map always agree.
-// Built by tools/build-map.mjs from Natural Earth provinces grouped into 1939 territories.
-const topo = JSON.parse(fs.readFileSync(path.join(PUBLIC, 'data', 'world-1939.json'), 'utf8'));
-const MAP_NAMES = topo.objects.territories.geometries.map(g => g.properties.name);
+// Territory names come straight from each scenario's map file so server and map
+// always agree. Built by tools/build-map.mjs from Natural Earth provinces.
+const MAPS = {};
+function mapNamesFor(mapFile) {
+  if (!MAPS[mapFile]) {
+    const topo = JSON.parse(fs.readFileSync(path.join(PUBLIC, 'data', mapFile), 'utf8'));
+    MAPS[mapFile] = topo.objects.territories.geometries.map(g => g.properties.name);
+  }
+  return MAPS[mapFile];
+}
 
 // ---------------- state + persistence ----------------
 let game = null;
@@ -43,7 +49,7 @@ try { if (fs.existsSync(AUTOSAVE)) game = loadFile(AUTOSAVE); } catch { game = n
 
 const publicState = (s) => {
   if (!s) return null;
-  const { lastTurnDebug, ...rest } = s;
+  const { lastTurnDebug, lastReportDebug, ...rest } = s;
   return rest;
 };
 const safeName = (n) => String(n || '').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 40) || 'save';
@@ -63,24 +69,31 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.static(PUBLIC));
 
 app.get('/api/info', (req, res) => {
+  const active = getScenario(game?.scenarioId || DEFAULT_SCENARIO_ID);
   res.json({
     llm: llmInfo(),
-    scenario: { id: SCENARIO.id, title: SCENARIO.title, briefing: SCENARIO.briefing, startDate: formatDate(SCENARIO.startDate) },
-    indicators: INDICATORS,
-    factions: FACTIONS,
+    scenarios: listScenarios(),
+    scenario: scenarioSummary(active),
+    indicators: active.indicators,
+    factions: active.factions,
     actionTypes: ACTION_TYPES,
     languages: [{ id: 'en', label: 'English' }, { id: 'zh-Hant', label: '繁體中文' }, { id: 'zh-Hans', label: '简体中文' }],
     hasGame: !!game
   });
 });
 
+app.get('/api/scenarios', (req, res) => res.json(listScenarios()));
+
 app.get('/api/playable', (req, res) => {
-  const preview = createGame({ player: 'GER' }, MAP_NAMES);
-  res.json(Object.values(preview.nations).filter(n => n.playable)
-    .map(n => ({ tag: n.tag, name: n.name, leader: n.leader, ideology: n.ideology, faction: n.faction, color: n.color })));
+  const scenario = getScenario(req.query?.scenarioId || game?.scenarioId || DEFAULT_SCENARIO_ID);
+  res.json(Object.entries(scenario.nations).filter(([, n]) => n.playable)
+    .map(([tag, n]) => ({ tag, name: n.name, leader: n.leader, ideology: n.ideology, faction: n.faction, color: n.color })));
 });
 
-app.get('/api/timeline', (req, res) => res.json(TIMELINE));
+app.get('/api/timeline', (req, res) => {
+  const scenario = getScenario(req.query?.scenarioId || game?.scenarioId || DEFAULT_SCENARIO_ID);
+  res.json(scenario.timeline);
+});
 
 app.get('/api/state', (req, res) => {
   if (!game) return res.status(404).json({ error: 'No game in progress. Start a new game.' });
@@ -90,8 +103,9 @@ app.get('/api/state', (req, res) => {
 app.get('/api/debug', (req, res) => res.json(game?.lastTurnDebug || null));
 
 app.post('/api/new', (req, res) => {
-  const { player, studentName, realism, lang } = req.body || {};
-  game = createGame({ player, studentName, realism }, MAP_NAMES);
+  const { player, studentName, realism, lang, scenarioId } = req.body || {};
+  const scenario = getScenario(scenarioId);
+  game = createGame({ scenarioId: scenario.id, player, studentName, realism }, mapNamesFor(scenario.mapFile));
   game.lang = ['en', 'zh-Hant', 'zh-Hans'].includes(lang) ? lang : 'en';
   save(); broadcast();
   res.json(publicState(game));
@@ -130,6 +144,44 @@ app.post('/api/actions', (req, res) => {
   game.gameOver = checkGameOver(game);
   save(); broadcast();
   res.json({ ...result, state: publicState(game) });
+});
+
+// End the campaign deliberately (the "Finish Game" button).
+app.post('/api/finish', (req, res) => {
+  if (!game) return res.status(400).json({ error: 'Start a new game first.' });
+  if (!game.gameOver) {
+    const scenario = getScenario(game.scenarioId);
+    game.gameOver = { reason: scenario.playerEndReason || 'You chose to end the campaign.', endedByPlayer: true };
+  }
+  save(); broadcast();
+  res.json(publicState(game));
+});
+
+// Generate (or return the cached) deterministic end-of-campaign report.
+app.post('/api/report', async (req, res) => {
+  if (!game) return res.status(400).json({ error: 'Start a new game first.' });
+  if (busy) return res.status(409).json({ error: 'A turn is already being resolved. Wait for it to finish.' });
+  busy = true;
+  broadcast('busy');
+  try {
+    const regenerate = Boolean(req.body?.regenerate || req.query?.regenerate);
+    const report = await generateReport(game, { lang: game.lang || 'en', regenerate });
+    save(); broadcast();
+    res.json(report);
+  } catch (err) {
+    console.error('[report failed]', err);
+    res.status(502).json({ error: `The examiner could not write the report: ${err.message}` });
+  } finally {
+    busy = false;
+    broadcast('idle');
+  }
+});
+
+app.get('/api/report.json', async (req, res) => {
+  if (!game) return res.status(404).json({ error: 'No game in progress.' });
+  if (!game.report) { try { await generateReport(game, { lang: game.lang || 'en' }); save(); } catch { /* fall through */ } }
+  res.set('Content-Disposition', 'attachment; filename="campaign-report.json"');
+  res.json(game.report || null);
 });
 
 app.post('/api/reflection', (req, res) => {
@@ -173,15 +225,40 @@ app.post('/api/load', (req, res) => {
   }
 });
 
+// ---------- Markdown exports ----------
+function reportMarkdown(r) {
+  if (!r) return [];
+  const lines = ['## After-action report', '', r.summary, ''];
+  lines.push(`**Overall: ${r.overall?.score ?? '—'}/100 (${r.overall?.letter || '—'} — ${r.overall?.label || ''})**`, '');
+  lines.push('| Rubric | Score | Comment |', '|---|---|---|');
+  for (const [k, g] of Object.entries(r.grades || {})) {
+    lines.push(`| ${k.replace(/_/g, ' ')} | ${g.score} | ${String(g.rationale || '').replace(/\|/g, '/')} |`);
+  }
+  lines.push('');
+  if (r.key_decisions?.length) {
+    lines.push('### Most important decisions', '');
+    for (const d of r.key_decisions) lines.push(`- **Turn ${d.turn}** (${d.rating}): ${d.order} — ${d.outcome} ${d.impact}`);
+    lines.push('');
+  }
+  if (r.timeline_diff?.length) {
+    lines.push('### Real history vs your timeline', '');
+    for (const t of r.timeline_diff) lines.push(`- **Real:** ${t.real_history}  `, `  **Yours:** ${t.your_timeline}`);
+    lines.push('');
+  }
+  if (r.lessons?.length) lines.push('### Lessons', '', ...r.lessons.map(l => `- ${l}`), '');
+  return lines;
+}
+
 // Student journal as Markdown — for teachers, portfolios and assessment.
 app.get('/api/journal.md', (req, res) => {
   if (!game) return res.status(404).send('No game in progress.');
   const n = game.nations[game.player];
+  const scenario = getScenario(game.scenarioId);
   const lines = [
     `# Leader's journal — ${n.name}`,
     '',
     `Student: ${game.studentName || '(not given)'}  `,
-    `Scenario: ${SCENARIO.title} (from ${formatDate(SCENARIO.startDate)})  `,
+    `Scenario: ${scenario.title} (from ${formatDate(scenario.startDate)})  `,
     `Mode: ${game.realism}  `,
     `Current date: ${formatDate(game.date)}, turn ${game.turn}`,
     ''
@@ -199,8 +276,16 @@ app.get('/api/journal.md', (req, res) => {
     }
     lines.push(`**My reflection:** ${j.reflection || '(not answered)'}`, '', '---', '');
   }
-  if (game.gameOver) lines.push(`## Campaign ended`, '', game.gameOver.reason, '');
+  if (game.gameOver) lines.push('## Campaign ended', '', game.gameOver.reason, '');
+  if (game.report) lines.push(...reportMarkdown(game.report));
   res.type('text/markdown').send(lines.join('\n'));
+});
+
+app.get('/api/report.md', (req, res) => {
+  if (!game) return res.status(404).send('No game in progress.');
+  const n = game.nations[game.player];
+  const head = [`# Campaign report — ${n.name}`, '', `Student: ${game.studentName || '(not given)'}  `, `Period: ${formatDate(game.date)}`, ''];
+  res.type('text/markdown').send([...head, ...reportMarkdown(game.report)].join('\n'));
 });
 
 app.get('/api/events', (req, res) => {

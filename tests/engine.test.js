@@ -5,14 +5,19 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createGame, applyActions, advanceTime, resolveNation, resolveTerritory } from '../server/engine.js';
 import { mockGameMaster } from '../server/mock.js';
+import { getScenario, listScenarios } from '../server/data/scenarios/index.js';
+import { computeMetrics, scoreFromGrades, applyWeights, letterGrade } from '../server/report.js';
+import { generateReport } from '../server/agents.js';
 
 const topo = JSON.parse(fs.readFileSync(new URL('../public/data/world-1939.json', import.meta.url)));
 const names = topo.objects.territories.geometries.map(g => g.properties.name);
 let passed = 0;
 const test = (name, fn) => { fn(); passed++; console.log(`  ok  ${name}`); };
+const asyncTest = async (name, fn) => { await fn(); passed++; console.log(`  ok  ${name}`); };
 
 test('new game assigns 1939 owners', () => {
   const s = createGame({ player: 'GER' }, names);
+  assert.equal(s.scenarioId, 'ww2-1939');
   assert.equal(s.territories['Austria'].owner, 'GER');
   assert.equal(s.territories['East Prussia'].owner, 'GER');      // includes Königsberg (today's Kaliningrad)
   assert.equal(s.territories['Eastern Poland'].owner, 'POL');    // interwar Poland reached Wilno and Lwów
@@ -23,13 +28,34 @@ test('new game assigns 1939 owners', () => {
   assert.ok(s.nations.SWEDEN, 'unlisted shapes become minor nations');
 });
 
-test('names and aliases resolve', () => {
+test('scenario registry lists scenarios and resolves them', () => {
+  const ids = listScenarios().map(s => s.id);
+  assert.ok(ids.includes('ww2-1939'));
+  assert.ok(ids.includes('china-1939'));
+  assert.equal(getScenario('nope').id, 'ww2-1939', 'unknown ids fall back to the default');
+});
+
+test('China scenario is playable as the Nationalists or the Communists', () => {
+  const s = createGame({ scenarioId: 'china-1939', player: 'CHN' }, names);
+  assert.equal(s.scenarioId, 'china-1939');
+  assert.equal(s.player, 'CHN');
+  assert.ok(s.nations.CCP, 'the CCP is present');
+  assert.equal(s.territories['Northwest China'].occupation.CCP, 35);
+  assert.ok(s.wars.some(w => w.includes('JAP') && w.includes('CCP')));
+  const ccp = createGame({ scenarioId: 'china-1939', player: 'CCP' }, names);
+  assert.equal(ccp.player, 'CCP');
+});
+
+test('names and aliases resolve per scenario', () => {
   const s = createGame({ player: 'GER' }, names);
   assert.equal(resolveNation(s, 'germany'), 'GER');
   assert.equal(resolveNation(s, 'Soviet Union'), 'SOV');
   assert.equal(resolveTerritory(s, 'usa'), 'United States');
   assert.equal(resolveTerritory(s, 'Kaliningrad'), 'East Prussia');
   assert.equal(resolveTerritory(s, 'Myanmar'), 'Burma');
+  const c = createGame({ scenarioId: 'china-1939', player: 'CHN' }, names);
+  assert.equal(resolveNation(c, 'kmt'), 'CHN');
+  assert.equal(resolveNation(c, 'communists'), 'CCP');
 });
 
 test('occupation is partial and capped at 100% in total', () => {
@@ -73,7 +99,7 @@ test('annexing the last territory defeats a nation', () => {
   assert.ok(!s.wars.some(w => w.includes('POL')));
 });
 
-test('time advances and stops at the end date', () => {
+test('time advances and stops at the scenario end date', () => {
   const s = createGame({ player: 'GER' }, names);
   advanceTime(s, 4);
   assert.deepEqual(s.date, { year: 1940, month: 1 });
@@ -87,6 +113,44 @@ test('offline game master understands "Germany takes 10% of Canada"', () => {
   const r = applyActions(s, gm.actions);
   assert.equal(r.rejected.length, 0);
   assert.equal(s.territories['Canada'].occupation.GER, 10);
+});
+
+test('report metrics are deterministic', () => {
+  const s = createGame({ scenarioId: 'china-1939', player: 'CHN' }, names);
+  applyActions(s, [{ type: 'occupy_territory', territory: 'Manchukuo', occupier: 'CHN', delta: 20 }]);
+  applyActions(s, [{ type: 'change_indicator', country: 'CHN', indicator: 'industry', delta: 5 }]);
+  const a = computeMetrics(s);
+  const b = computeMetrics(s);
+  assert.deepEqual(a, b);
+  assert.equal(a.occupationGained['Manchukuo'], 20);
+  assert.equal(a.indicatorChanges.industry, 5);
+});
+
+test('overall score is a reproducible weighted combination', () => {
+  const scenario = getScenario('china-1939');
+  const weights = applyWeights(scenario);
+  assert.ok(Math.abs(Object.values(weights).reduce((a, b) => a + b, 0) - 1) < 1e-9);
+  const grades = {
+    historical_realism: { score: 80 }, strategic_effectiveness: { score: 60 },
+    economic_management: { score: 70 }, diplomacy: { score: 50 }, decision_quality: { score: 90 }
+  };
+  const one = scoreFromGrades(grades, weights);
+  const two = scoreFromGrades(grades, weights);
+  assert.deepEqual(one, two);
+  assert.equal(letterGrade(95), 'A');
+  assert.equal(letterGrade(10), 'F');
+});
+
+await asyncTest('offline after-action report is complete and reproducible', async () => {
+  const s = createGame({ scenarioId: 'china-1939', player: 'CHN' }, names);
+  s.gameOver = { reason: 'test' };
+  const r1 = await generateReport(s, { regenerate: true });
+  assert.ok(r1.grades.historical_realism.score >= 0 && r1.grades.historical_realism.score <= 100);
+  assert.ok(r1.overall.score >= 0 && r1.overall.letter);
+  assert.equal(r1.metrics.player.tag, 'CHN');
+  const r2 = await generateReport(s, { regenerate: true });
+  assert.deepEqual(r1.metrics, r2.metrics, 'metrics are deterministic');
+  assert.equal(r1.overall.score, r2.overall.score, 'overall score is reproducible');
 });
 
 console.log(`\n${passed} tests passed`);

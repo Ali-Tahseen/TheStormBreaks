@@ -10,7 +10,8 @@ const topojson = window.topojson;
 
 const VIEWS = {
   europe: [[-14, 33], [50, 68]],
-  asia: [[62, -14], [178, 58]]
+  asia: [[62, -14], [178, 58]],
+  china: [[95, 18], [135, 50]]
 };
 
 export class WorldMap {

@@ -42,6 +42,7 @@ function summarize(s) {
   return {
     date: `${months[s.date.month - 1]} ${s.date.year}`,
     turn: s.turn,
+    scenarioId: s.scenarioId,
     player: s.player,
     realism: s.realism,
     gameOver: s.gameOver,
@@ -87,16 +88,38 @@ server.registerTool('apply_actions', {
   } catch (e) { return fail(e); }
 });
 
+server.registerTool('list_scenarios', {
+  title: 'List scenarios',
+  description: 'List the available campaigns (id, title, playable nations).'
+}, async () => {
+  try { return text(await call('GET', '/api/scenarios')); } catch (e) { return fail(e); }
+});
+
 server.registerTool('new_game', {
   title: 'Start a new game',
-  description: 'Start a new campaign in September 1939.',
+  description: 'Start a new campaign. Defaults to the WWII scenario ("ww2-1939"); use "china-1939" for China’s War of Resistance.',
   inputSchema: {
-    player: z.enum(['GER', 'ITA', 'JAP', 'UK', 'FRA', 'USA', 'SOV', 'CHN', 'POL']),
+    scenarioId: z.string().optional().describe('Scenario id, e.g. ww2-1939 or china-1939'),
+    player: z.string().optional().describe('Nation tag, e.g. GER, CHN, CCP'),
     realism: z.enum(['historical', 'sandbox']).optional(),
     lang: z.enum(['en', 'zh-Hant', 'zh-Hans']).optional()
   }
 }, async (args) => {
   try { return text(summarize(await call('POST', '/api/new', args))); } catch (e) { return fail(e); }
+});
+
+server.registerTool('finish_game', {
+  title: 'Finish the campaign',
+  description: 'End the current campaign early. Afterwards, call get_report for the graded after-action report.'
+}, async () => {
+  try { return text(summarize(await call('POST', '/api/finish', {}))); } catch (e) { return fail(e); }
+});
+
+server.registerTool('get_report', {
+  title: 'Get the after-action report',
+  description: 'Generate (or return the cached) end-of-campaign report with grades, overall score and the most important decisions.'
+}, async () => {
+  try { return text(await call('POST', '/api/report', {})); } catch (e) { return fail(e); }
 });
 
 server.registerTool('get_journal', {

@@ -4,23 +4,28 @@ All endpoints are served by `server/index.js` on `http://localhost:3000` (or `PO
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| GET | `/api/info` | | AI config, scenario briefing, indicator and faction definitions, action types, languages, `hasGame` |
-| GET | `/api/playable` | | Playable nations for the start screen |
-| GET | `/api/timeline` | | Real historical events list |
+| GET | `/api/info` | | AI config, scenario list + active scenario, indicator and faction definitions, action types, languages, `hasGame` |
+| GET | `/api/scenarios` | | Compact list of campaigns (id, title, briefing, playable nations, suggestions) |
+| GET | `/api/playable` | | Playable nations for the start screen; optional `?scenarioId=` |
+| GET | `/api/timeline` | | Real historical events for the active scenario; optional `?scenarioId=` |
 | GET | `/api/state` | | Full game state (404 if no game) |
 | GET | `/api/debug` | | Last turn's agent requests/responses and applied/rejected actions |
-| POST | `/api/new` | `{ player, studentName?, realism?, lang? }` | New game state |
+| POST | `/api/new` | `{ scenarioId?, player, studentName?, realism?, lang? }` | New game state |
 | POST | `/api/turn` | `{ order }` | `{ entry, state }` — resolves one turn with the AI agents |
+| POST | `/api/finish` | `{}` | Ends the campaign (player-initiated game over) |
+| POST | `/api/report` | `{ regenerate? }` | The after-action report (generates it if not cached) |
 | POST | `/api/actions` | `{ actions: [...], source? }` | `{ applied, rejected, state }` — applies actions directly, no AI |
 | POST | `/api/reflection` | `{ turn, text }` | Saves a student's answer to that turn's reflection question |
 | POST | `/api/settings` | `{ realism?, lang? }` | Updated state |
 | GET | `/api/saves` | | List of saves |
 | POST | `/api/save` | `{ name }` | Saves the current game to `saves/<name>.json` |
 | POST | `/api/load` | `{ name }` | Loads a save |
-| GET | `/api/journal.md` | | The student's journal as Markdown |
+| GET | `/api/journal.md` | | The student's journal (and the report, if generated) as Markdown |
+| GET | `/api/report.md` | | The after-action report as Markdown |
+| GET | `/api/report.json` | | The after-action report as a downloadable JSON file |
 | GET | `/api/events` | | Server-Sent Events stream: `{type: "state"|"busy"|"idle"|"hello", version}` |
 
-Values: `player` is a tag (`GER`, `UK`, …); `realism` is `historical` or `sandbox`; `lang` is `en`, `zh-Hant` or `zh-Hans`.
+Values: `scenarioId` is `ww2-1939` or `china-1939`; `player` is a tag (`GER`, `CHN`, `CCP`, …); `realism` is `historical` or `sandbox`; `lang` is `en`, `zh-Hant` or `zh-Hans`.
 
 `/api/turn` returns **409** if a turn is already running and **502** if the AI call fails. A failed turn restores the state exactly as it was before.
 
@@ -29,6 +34,7 @@ Values: `player` is a tag (`GER`, `UK`, …); `realism` is `historical` or `sand
 ```jsonc
 {
   "id": "game-1727...",
+  "scenarioId": "ww2-1939",            // which campaign this game is playing
   "version": 12,                       // increments on every change (used for live updates)
   "date": { "year": 1940, "month": 3 },
   "endDate": { "year": 1945, "month": 9 },
@@ -57,7 +63,45 @@ Values: `player` is a tag (`GER`, `UK`, …); `realism` is `historical` or `sand
   "journal": [ /* one entry per turn, see below */ ],
   "lastDeltas": { "GER": { "industry": 5 } },   // indicator changes during the last turn
   "lastChangedTerritories": ["Canada"],
-  "gameOver": null                     // or { "reason": "..." }
+  "initial": { /* compact snapshot of the starting position, used by the report */ },
+  "report": null,                      // the after-action report once generated
+  "gameOver": null                     // or { "reason": "...", "endedByPlayer": true }
+}
+```
+
+## After-action report shape
+
+Returned by `POST /api/report` and stored on the state as `report`. The `metrics` and `overall` fields are computed deterministically by the engine; `grades`, `key_decisions`, `timeline_diff` and `lessons` come from the AI examiner (or `mockReport` offline).
+
+```jsonc
+{
+  "generatedAt": "2026-09-19T...",
+  "scenarioId": "china-1939",
+  "player": "CHN", "playerName": "Republic of China",
+  "turns": 6, "period": "September 1939 – March 1940",
+  "metrics": {
+    "turns": 6, "monthsPlayed": 6,
+    "territoriesGained": ["Manchukuo"], "territoriesLost": [],
+    "occupationGained": { "Manchukuo": 20 }, "occupationLost": {},
+    "indicatorChanges": { "industry": 5, "stability": -4 },
+    "warsStarted": [], "warsEnded": [], "enemiesDefeated": [],
+    "feasibility": { "success": 2, "partial": 3, "failed": 1, "refused": 0 },
+    "realEventsInPeriod": [ { "date": "1939-09-01", "title": "War in Europe begins…" } ]
+  },
+  "summary": "…",
+  "grades": {
+    "historical_realism": { "score": 72, "rationale": "…" },
+    "strategic_effectiveness": { "score": 65, "rationale": "…" },
+    "economic_management": { "score": 58, "rationale": "…" },
+    "diplomacy": { "score": 60, "rationale": "…" },
+    "decision_quality": { "score": 70, "rationale": "…" }
+  },
+  "key_decisions": [ { "turn": 3, "order": "…", "outcome": "…", "impact": "…", "rating": "wise|mixed|costly" } ],
+  "timeline_diff": [ { "real_history": "…", "your_timeline": "…" } ],
+  "lessons": ["…"],
+  "overall": { "score": 66, "letter": "D", "label": "Fair" },
+  "weights": { "historical_realism": 0.3, "…": 0.15 },
+  "engine": { "deterministicMetrics": true, "weights": { "…": 0.15 }, "grader": "llm" }
 }
 ```
 

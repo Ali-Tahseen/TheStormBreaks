@@ -5,11 +5,12 @@
 // whitelist below, clamps numbers to safe ranges, applies what is valid and
 // reports what was rejected (and why). That keeps the game stable even when
 // a model returns something odd, and makes every change auditable.
+//
+// All scenario-specific values (nations, territories, indicators, aliases…)
+// are read from the scenario registry via state.scenarioId, so this file is
+// scenario-agnostic.
 
-import {
-  SCENARIO, INDICATORS, FACTIONS, NATIONS, TERRITORY_OWNERS, IGNORED_TERRITORIES,
-  START_OCCUPATION, START_WARS, START_RELATIONS, ALIASES, TERRITORY_ALIASES
-} from './data/scenario1939.js';
+import { getScenario, DEFAULT_SCENARIO_ID } from './data/scenarios/index.js';
 
 export const ACTION_TYPES = [
   'change_indicator', 'set_indicator', 'occupy_territory', 'liberate_territory', 'annex_territory',
@@ -50,20 +51,21 @@ function minorColor(name) {
 
 // ---------- game creation ----------
 /**
- * @param {object} opts { player, studentName, realism }
- * @param {string[]} mapNames every territory name in the map file
+ * @param {object} opts { scenarioId, player, studentName, realism }
+ * @param {string[]} mapNames every territory name in the scenario's map file
  */
-export function createGame(opts, mapNames) {
+export function createGame(opts = {}, mapNames = []) {
+  const scenario = getScenario(opts.scenarioId);
   const nations = {};
-  for (const [tag, n] of Object.entries(NATIONS)) {
+  for (const [tag, n] of Object.entries(scenario.nations)) {
     nations[tag] = { tag, minor: false, capitulated: false, playable: !!n.playable, ...clone(n) };
   }
 
   const territories = {};
   const taken = new Set(Object.keys(nations));
   for (const name of mapNames) {
-    if (IGNORED_TERRITORIES.includes(name)) continue;
-    let owner = TERRITORY_OWNERS[name];
+    if (scenario.ignoredTerritories.includes(name)) continue;
+    let owner = scenario.territoryOwners[name];
     if (!owner) {
       // Any shape not assigned to a listed nation becomes its own minor nation.
       owner = slugTag(name, taken);
@@ -71,17 +73,17 @@ export function createGame(opts, mapNames) {
       nations[owner] = {
         tag: owner, name, leader: 'Government', ideology: 'Independent state', faction: null,
         color: minorColor(name), home: name, minor: true, playable: false, capitulated: false,
-        indicators: { gdp: 10, industry: 10, resources: 30, army: 10, navy: 3, air: 5, manpower: 1, stability: 60, war_support: 20 }
+        indicators: { ...scenario.minorIndicators }
       };
     }
     territories[name] = { owner, occupation: {} };
   }
-  for (const [t, occ] of Object.entries(START_OCCUPATION)) {
+  for (const [t, occ] of Object.entries(scenario.startOccupation)) {
     if (territories[t]) territories[t].occupation = { ...occ };
   }
 
   const relations = {};
-  for (const [k, v] of Object.entries(START_RELATIONS)) {
+  for (const [k, v] of Object.entries(scenario.startRelations)) {
     const [a, b] = k.split('|');
     relations[relKey(a, b)] = v;
   }
@@ -90,31 +92,48 @@ export function createGame(opts, mapNames) {
 
   const state = {
     id: `game-${Date.now()}`,
-    scenarioId: SCENARIO.id,
+    scenarioId: scenario.id,
     version: 1,
     createdAt: new Date().toISOString(),
-    date: { ...SCENARIO.startDate },
-    endDate: { ...SCENARIO.endDate },
+    date: { ...scenario.startDate },
+    endDate: { ...scenario.endDate },
     turn: 1,
     player,
     studentName: String(opts.studentName || '').slice(0, 60),
     realism: opts.realism === 'sandbox' ? 'sandbox' : 'historical',
     nations,
     territories,
-    wars: START_WARS.map(([a, b]) => [a, b]),
+    wars: scenario.startWars.map(([a, b]) => [a, b]),
     relations,
     events: [{
-      turn: 0, date: { ...SCENARIO.startDate }, title: 'Germany invades Poland',
-      description: 'German forces cross the Polish border. The Second World War in Europe begins.',
-      category: 'war', territories: ['Poland'], source: 'scenario'
+      turn: 0, date: { ...scenario.startDate }, ...clone(scenario.startEvent), source: 'scenario'
     }],
     journal: [],
     lastDeltas: {},
     lastChangedTerritories: [],
     lastTurnDebug: null,
+    report: null,
     gameOver: null
   };
+  state.initial = snapshotInitial(state);
   return state;
+}
+
+// A compact, serialisable record of the starting position, used by the
+// end-of-campaign report to compute deterministic metrics (see server/report.js).
+export function snapshotInitial(state) {
+  const indicators = {};
+  for (const [tag, n] of Object.entries(state.nations)) indicators[tag] = { ...n.indicators };
+  const territories = {};
+  for (const [name, t] of Object.entries(state.territories)) {
+    territories[name] = { owner: t.owner, occupation: { ...t.occupation } };
+  }
+  return {
+    indicators,
+    territories,
+    wars: state.wars.map(w => [...w]),
+    relations: { ...state.relations }
+  };
 }
 
 // ---------- name resolution ----------
@@ -124,8 +143,9 @@ export function resolveNation(state, ref) {
   if (state.nations[raw]) return raw;
   const up = raw.toUpperCase();
   if (state.nations[up]) return up;
+  const sc = getScenario(state.scenarioId);
   const n = norm(raw);
-  if (ALIASES[n] && state.nations[ALIASES[n]]) return ALIASES[n];
+  if (sc.aliases[n] && state.nations[sc.aliases[n]]) return sc.aliases[n];
   for (const nat of Object.values(state.nations)) {
     if (norm(nat.name) === n) return nat.tag;
   }
@@ -141,7 +161,8 @@ export function resolveTerritory(state, ref) {
   if (state.territories[raw]) return raw;
   const n = norm(raw);
   for (const name of Object.keys(state.territories)) if (norm(name) === n) return name;
-  if (TERRITORY_ALIASES[n] && state.territories[TERRITORY_ALIASES[n]]) return TERRITORY_ALIASES[n];
+  const sc = getScenario(state.scenarioId);
+  if (sc.territoryAliases[n] && state.territories[sc.territoryAliases[n]]) return sc.territoryAliases[n];
   // A nation name refers to its home territory ("Soviet Union" -> Russia)
   for (const nat of Object.values(state.nations)) {
     if (norm(nat.name) === n || nat.tag === raw.toUpperCase()) return nat.home;
@@ -180,6 +201,7 @@ function actorsOf(a) {
 export function applyActions(state, actions, ctx = {}) {
   const applied = [], rejected = [];
   if (!Array.isArray(actions)) return { applied, rejected: [{ action: actions, reason: 'actions must be an array' }] };
+  const scenario = getScenario(state.scenarioId);
 
   for (const raw of actions.slice(0, 40)) {
     try {
@@ -192,7 +214,7 @@ export function applyActions(state, actions, ctx = {}) {
       }
 
       action.source = ctx.source || 'unknown';
-      const summary = APPLY[action.type](state, action);
+      const summary = APPLY[action.type](state, action, scenario);
       applied.push({ ...action, summary });
     } catch (err) {
       rejected.push({ action: raw, reason: err.message });
@@ -215,8 +237,8 @@ function needTerritory(state, ref) {
 function markChanged(state, t) {
   if (!state.lastChangedTerritories.includes(t)) state.lastChangedTerritories.push(t);
 }
-function limitStep(key, current, target) {
-  const def = INDICATORS[key];
+function limitStep(scenario, key, current, target) {
+  const def = scenario.indicators[key];
   let next = target;
   if (key === 'gdp') {
     const cap = Math.max(5, current * MAX_GDP_STEP);
@@ -230,26 +252,26 @@ function limitStep(key, current, target) {
 }
 
 const APPLY = {
-  change_indicator(state, a) {
+  change_indicator(state, a, scenario) {
     const tag = needNation(state, a.country, 'country');
-    if (!INDICATORS[a.indicator]) throw new Error(`unknown indicator "${a.indicator}"`);
+    if (!scenario.indicators[a.indicator]) throw new Error(`unknown indicator "${a.indicator}"`);
     const delta = Number(a.delta);
     if (!Number.isFinite(delta)) throw new Error('delta must be a number');
     const inds = state.nations[tag].indicators;
     const before = inds[a.indicator];
-    inds[a.indicator] = limitStep(a.indicator, before, before + delta);
-    return `${state.nations[tag].name}: ${INDICATORS[a.indicator].label} ${before} → ${inds[a.indicator]}`;
+    inds[a.indicator] = limitStep(scenario, a.indicator, before, before + delta);
+    return `${state.nations[tag].name}: ${scenario.indicators[a.indicator].label} ${before} → ${inds[a.indicator]}`;
   },
 
-  set_indicator(state, a) {
+  set_indicator(state, a, scenario) {
     const tag = needNation(state, a.country, 'country');
-    if (!INDICATORS[a.indicator]) throw new Error(`unknown indicator "${a.indicator}"`);
+    if (!scenario.indicators[a.indicator]) throw new Error(`unknown indicator "${a.indicator}"`);
     const value = Number(a.value);
     if (!Number.isFinite(value)) throw new Error('value must be a number');
     const inds = state.nations[tag].indicators;
     const before = inds[a.indicator];
-    inds[a.indicator] = limitStep(a.indicator, before, value);
-    return `${state.nations[tag].name}: ${INDICATORS[a.indicator].label} ${before} → ${inds[a.indicator]}`;
+    inds[a.indicator] = limitStep(scenario, a.indicator, before, value);
+    return `${state.nations[tag].name}: ${scenario.indicators[a.indicator].label} ${before} → ${inds[a.indicator]}`;
   },
 
   occupy_territory(state, a) {
@@ -332,11 +354,11 @@ const APPLY = {
     return `Peace between ${state.nations[x].name} and ${state.nations[y].name}`;
   },
 
-  join_faction(state, a) {
+  join_faction(state, a, scenario) {
     const tag = needNation(state, a.country, 'country');
     const f = String(a.faction || '').trim().slice(0, 30);
     if (!f) throw new Error('faction name missing');
-    const known = Object.keys(FACTIONS).find(k => norm(k) === norm(f));
+    const known = Object.keys(scenario.factions).find(k => norm(k) === norm(f));
     state.nations[tag].faction = known || f;
     return `${state.nations[tag].name} joins ${state.nations[tag].faction}`;
   },
@@ -414,10 +436,11 @@ export function advanceTime(state, months) {
 }
 
 export function checkGameOver(state) {
+  const scenario = getScenario(state.scenarioId);
   const p = state.nations[state.player];
   if (p.capitulated) return { reason: `${p.name} has been defeated and lost all its territory.` };
   if (p.indicators.stability <= 0) return { reason: `Stability in ${p.name} collapsed. The government has fallen.` };
-  if (monthIndex(state.date) >= monthIndex(state.endDate)) return { reason: 'The campaign has reached September 1945, when the real war ended.' };
+  if (monthIndex(state.date) >= monthIndex(state.endDate)) return { reason: scenario.endReason };
   return null;
 }
 
@@ -448,6 +471,7 @@ export function summarizeForLLM(state, { full = true } = {}) {
   }
 
   return {
+    scenario: state.scenarioId,
     date: formatDate(state.date),
     turn: state.turn,
     player: { tag: state.player, name: state.nations[state.player].name, leader: state.nations[state.player].leader },
@@ -459,4 +483,4 @@ export function summarizeForLLM(state, { full = true } = {}) {
   };
 }
 
-export { INDICATORS, FACTIONS, SCENARIO };
+export { DEFAULT_SCENARIO_ID };

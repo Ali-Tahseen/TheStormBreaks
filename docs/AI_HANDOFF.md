@@ -17,21 +17,27 @@ Stack: Node.js ≥ 18.17 (ES modules), Express 5, dotenv, vanilla JS frontend wi
 5. **Student safety** (`SAFETY` in `agents.js`): no graphic content, atrocities never playable, Holocaust taught accurately, invented dialogue never presented as real quotes. Don't weaken this.
 6. **The frontend renders; it doesn't simulate.** Game logic belongs on the server.
 7. **Escape all text** inserted into HTML with `esc()` from `public/js/panels.js`.
+8. **Keep the engine scenario-agnostic.** Never import a scenario file directly into `engine.js`, `agents.js` or `mock.js`; resolve values through `getScenario(state.scenarioId)` from `server/data/scenarios/index.js`.
+9. **Report scores must stay reproducible.** The LLM may only return per-rubric scores and prose; `server/report.js` owns the metrics and the weighted overall score. Do not let the model set the overall score directly.
 
 ## File map
 
 | File | Responsibility |
 |---|---|
-| `server/index.js` | Express routes, autosave to `saves/autosave.json`, SSE broadcast, Markdown journal export, turn lock + rollback on failure |
-| `server/engine.js` | `createGame`, `applyActions` + `APPLY` handlers, name resolution, `advanceTime`, `checkGameOver`, `summarizeForLLM`, deltas |
-| `server/agents.js` | Prompts (`ACTION_SPEC`, `SAFETY`, three system prompts), JSON cleaners, `runTurn` pipeline |
+| `server/index.js` | Express routes, autosave to `saves/autosave.json`, SSE broadcast, Markdown journal/report export, turn + report lock, rollback on failure |
+| `server/engine.js` | `createGame`, `applyActions` + `APPLY` handlers, name resolution, `advanceTime`, `checkGameOver`, `summarizeForLLM`, deltas, `snapshotInitial`. Scenario-agnostic |
+| `server/agents.js` | Scenario-parameterised prompts (`actionSpec`, `SAFETY`, three turn agents, report agent), JSON cleaners, `runTurn`, `generateReport` |
+| `server/report.js` | `computeMetrics` (deterministic) and `scoreFromGrades` (fixed weights, reproducible overall score) |
 | `server/llm.js` | `chatJSON(system, user)`: OpenAI-compatible call, JSON mode, loose parsing, one retry, timeout. Config from env |
-| `server/mock.js` | Keyword-based stand-ins for the three agents |
-| `server/data/scenario1939.js` | `SCENARIO` (dates, briefing), `INDICATORS`, `FACTIONS`, `NATIONS`, `TERRITORY_OWNERS`, `START_OCCUPATION`, `START_WARS`, `START_RELATIONS`, aliases |
-| `server/data/timeline.js` | `TIMELINE` of real events + `eventsBetween`, `eventsNear` |
-| `public/js/app.js` | Boot, event wiring, `sendOrder` turn flow, date roll animation, start/hood/ending modals, lesson drawer |
-| `public/js/map.js` | `WorldMap`: projection, fills, occupation patterns, borders mesh, labels, zoom/views/focus, pulse |
-| `public/js/panels.js` | Pure HTML builders: nation card, indicator/diplomacy/journal tabs, log, lesson, hood; `SUGGESTIONS` per nation |
+| `server/mock.js` | Keyword-based stand-ins for the turn agents + `mockReport` |
+| `server/data/scenarios/index.js` | Scenario registry: `SCENARIOS`, `getScenario`, `listScenarios`, `scenarioSummary` |
+| `server/data/scenarios/ww2-1939.js` | WWII campaign data: dates, briefing, `indicators`, `factions`, `nations`, `territoryOwners`, `start*`, aliases, suggestions, timeline |
+| `server/data/scenarios/china-1939.js` | China's War of Resistance campaign (spreads the WWII data and overrides China/CCP) |
+| `server/data/timelines/*.js` | `TIMELINE` of real events per campaign |
+| `server/data/timeline.js` | Generic `eventsBetween(timeline, …)` / `eventsNear(timeline, …)` |
+| `public/js/app.js` | Boot, event wiring, scenario picker, `sendOrder` turn flow, date roll animation, start/hood/ending modals, report screen, lesson drawer |
+| `public/js/map.js` | `WorldMap`: projection, fills, occupation patterns, borders mesh, labels, zoom/views (incl. China)/focus, pulse |
+| `public/js/panels.js` | Pure HTML builders: nation card, indicator/diplomacy/journal tabs, log, lesson, hood, after-action report |
 | `public/js/api.js` | Fetch wrapper; `listen()` for SSE |
 | `tools/build-map.mjs` | Builds `public/data/world-1939.json`: groups Natural Earth provinces into 1939 territories and cuts along historical border lines (`CLIPS`) |
 | `mcp/server.js` | MCP tools that call the REST API on `GAME_URL` |
@@ -51,6 +57,10 @@ Data contracts are in `docs/API.md` (state and journal shapes) and `docs/ACTIONS
 
 **Add a new agent** (e.g. an "Economist"): write a system prompt and cleaner in `agents.js`, call it inside `runTurn` (in parallel with the others if it only needs the GM result), apply its actions with a distinct `source`, push debug info into `debug.agents`, and add a mock in `mock.js`.
 
+**Add a scenario**: add `server/data/timelines/<id>.js`, add `server/data/scenarios/<id>.js` (spread an existing scenario and override the fields you need — see `china-1939.js`), then register it in `server/data/scenarios/index.js`. It appears on the start screen and in the API automatically. If the scenario uses a new map, set `mapFile` and key `territoryOwners` by that map's `properties.name` values.
+
+**Change the report rubrics or weights**: edit `DEFAULT_WEIGHTS` in `server/report.js`, or set `reportWeights` on a scenario. The overall score is always recomputed by the engine.
+
 **Change the LLM**: `.env` only (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_JSON_MODE`).
 
 **Test without an LLM**: run with no key, or use Under the hood → Apply actions by hand, or `curl -X POST localhost:3000/api/actions -H 'content-type: application/json' -d '{"actions":[...]}'`.
@@ -60,5 +70,7 @@ Data contracts are in `docs/API.md` (state and journal shapes) and `docs/ACTIONS
 - 1939 borders are approximations (10–30 km). Not modelled: German Upper Silesia (shown Polish), Zaolzie (shown German), Estonian/Latvian districts now in Pskov oblast (shown Soviet), Aden (shown as Yemen), British Cameroons (shown French).
 - One game per server process (`let game` in `index.js`). For multi-student hosting, key games by a session id.
 - No scripted historical events fire automatically yet; the real timeline only informs prompts and lessons.
-- No teacher dashboard; journals are exported per student as Markdown.
+- No teacher dashboard; journals and reports are exported per student as Markdown/JSON.
 - The UI chrome is English only; AI-generated text can be English or Chinese.
+- Two scenarios share `world-1939.json`. The registry and frontend support a different `mapFile` per scenario (the page reloads when it changes), but no second map has been built yet.
+- The CCP has no owned province in the China scenario; it is represented by occupation stripes. A province-level China map would make the civil-war-era fronts sharper.
