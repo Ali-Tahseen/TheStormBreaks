@@ -1,0 +1,31 @@
+{
+  "name": "wwii-strategy-classroom",
+  "version": "0.1.0",
+  "description": "Text-driven WWII grand-strategy game for history classrooms. Natural-language orders are resolved by LLM agents into JSON actions that update a world map.",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "mcp": "node mcp/server.js",
+    "test": "node tests/engine.test.js",
+    "build-map": "node tools/build-map.mjs"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "dotenv": "^18.0.1",
+    "express": "^5.2.1",
+    "zod": "^4.6.5"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=18.17"
+  },
+  "private": true,
+  "devDependencies": {
+    "d3": "^7.9.0",
+    "mapshaper": "^0.7.61",
+    "topojson-client": "^3.1.0"
+  }
+}

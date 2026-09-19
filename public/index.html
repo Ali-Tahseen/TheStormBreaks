@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Storm Breaks — a WWII strategy game for history class</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗺️</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600;700&family=Spectral:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- The map fills the screen; every panel floats above it. -->
+  <div id="map" class="map" aria-label="World map, 1939"></div>
+  <div id="tooltip" class="tooltip" role="status" hidden></div>
+
+  <!-- Top bar: date, map views, tools -->
+  <header class="topbar">
+    <div class="datestamp" aria-live="polite">
+      <span id="date" class="datestamp-date">September 1939</span>
+      <span id="turn" class="datestamp-turn">Turn 1</span>
+    </div>
+    <div class="tools">
+      <span id="ai-mode" class="ai-mode"></span>
+      <button id="btn-lesson" class="btn ghost" type="button">Lesson</button>
+      <button id="btn-hood" class="btn ghost" type="button">Under the hood</button>
+      <button id="btn-save" class="btn ghost" type="button">Save</button>
+      <button id="btn-menu" class="btn ghost" type="button">New game</button>
+    </div>
+  </header>
+
+  <!-- Left rail: indicators (top) and orders (bottom) -->
+  <aside class="rail">
+    <section class="panel ledger" aria-label="Nation indicators">
+      <div id="nation-card" class="nation-card"></div>
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="economy" aria-selected="true">Economy</button>
+        <button role="tab" data-tab="military">Military</button>
+        <button role="tab" data-tab="politics">Politics</button>
+        <button role="tab" data-tab="diplomacy">Diplomacy</button>
+        <button role="tab" data-tab="journal">Journal</button>
+      </div>
+      <div id="tab-body" class="tab-body" role="tabpanel"></div>
+    </section>
+
+    <section class="panel orders" aria-label="Orders">
+      <div id="log" class="log" aria-live="polite"></div>
+      <form id="order-form" class="order-form" autocomplete="off">
+        <label for="order" id="order-label" class="order-label">Your orders</label>
+        <textarea id="order" rows="3" maxlength="1200" placeholder="Describe what your nation does next…"></textarea>
+        <div class="order-row">
+          <div id="suggestions" class="suggestions"></div>
+          <button id="send" class="btn primary" type="submit">Send order</button>
+        </div>
+      </form>
+    </section>
+  </aside>
+
+  <!-- Milestones of this campaign -->
+  <div class="strip" aria-label="Campaign milestones">
+    <ol id="milestones" class="milestones"></ol>
+  </div>
+
+  <div class="mapctl">
+    <nav class="views" aria-label="Map view">
+      <button data-view="world" class="chip">World</button>
+      <button data-view="europe" class="chip">Europe</button>
+      <button data-view="asia" class="chip">Asia &amp; Pacific</button>
+    </nav>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <!-- Lesson drawer (right) -->
+  <aside id="drawer" class="panel drawer" aria-label="History lesson" aria-hidden="true">
+    <button class="close" id="drawer-close" type="button" aria-label="Close lesson">×</button>
+    <div id="drawer-body"></div>
+  </aside>
+
+  <!-- Modals -->
+  <div id="start" class="overlay" hidden>
+    <div class="sheet start-sheet" role="dialog" aria-modal="true" aria-labelledby="start-title"></div>
+  </div>
+  <div id="hood" class="overlay" hidden>
+    <div class="sheet hood-sheet" role="dialog" aria-modal="true" aria-labelledby="hood-title"></div>
+  </div>
+  <div id="ending" class="overlay" hidden>
+    <div class="sheet ending-sheet" role="dialog" aria-modal="true"></div>
+  </div>
+
+  <div id="toast" class="toast" role="alert" hidden></div>
+
+  <script src="/vendor/d3.min.js"></script>
+  <script src="/vendor/topojson-client.min.js"></script>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
