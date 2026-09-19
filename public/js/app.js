@@ -304,11 +304,7 @@ async function toggleNarration(turn) {
 }
 
 async function playNarration(turn) {
-  const entry = app.state?.journal.find(j => j.turn === turn);
   const cues = [{ kind: 'turn_headline', turn }];
-  if (String(entry?.feasibilityReason || '').trim()) {
-    cues.push({ kind: 'turn_reason', turn });
-  }
   const pending = audio.playQueue(cues, { turn });
   syncNarrationButtons();
   try {

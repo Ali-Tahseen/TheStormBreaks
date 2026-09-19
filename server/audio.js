@@ -41,11 +41,32 @@ export function audioInfo() {
   };
 }
 
+function lowercaseAfterFirstWord(text) {
+  const words = text.split(/\s+/);
+  if (words.length < 2) return text;
+  return [words[0], ...words.slice(1).map((word) => word.toLowerCase())].join(' ');
+}
+
+function withSentenceEnd(text) {
+  if (/[.!?…。！？]$/.test(text)) return text;
+  return `${text}.`;
+}
+
+function spokenHeadline(text) {
+  return withSentenceEnd(lowercaseAfterFirstWord(text));
+}
+
 export function textForKind(entry, kind) {
   if (!entry || !NARRATABLE_KINDS[kind]) return null;
   const field = KIND_FIELDS[kind];
   const text = String(entry[field] || '').trim();
-  return text || null;
+  if (!text) return null;
+  if (kind === 'turn_headline') {
+    const title = spokenHeadline(text);
+    const reason = String(entry.feasibilityReason || '').trim();
+    return reason ? `${title} ${reason}` : title;
+  }
+  return text;
 }
 
 export class AudioClipError extends Error {
