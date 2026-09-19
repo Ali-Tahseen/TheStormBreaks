@@ -1,6 +1,8 @@
 // Pure functions that turn game state into HTML for the panels.
 // No fetching and no side effects here — app.js wires events.
 
+import { swatchStyle } from './flags.js';
+
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -45,7 +47,7 @@ export function indicatorTab(state, info, tab, selected) {
   const defs = Object.entries(info.indicators).filter(([, d]) => d.tab === tab);
   const rows = tableNations(state, selected).map(n => `
     <tr data-tag="${esc(n.tag)}" class="${n.tag === state.player ? 'is-player' : ''} ${n.tag === selected ? 'is-selected' : ''} ${n.capitulated ? 'is-out' : ''}">
-      <td><span class="nm"><span class="swatch" style="background:${esc(n.color)}"></span>${esc(n.name)}</span>${warsOf(state, n.tag).includes(state.player) ? '<span class="badge" title="At war with you">war</span>' : ''}</td>
+      <td><span class="nm"><span class="swatch" style="${swatchStyle(n)}"></span>${esc(n.name)}</span>${warsOf(state, n.tag).includes(state.player) ? '<span class="badge" title="At war with you">war</span>' : ''}</td>
       ${defs.map(([k, d]) => cell(state, n, k, d)).join('')}
     </tr>`).join('');
   return `<table class="ind">
@@ -63,7 +65,7 @@ export function diplomacyTab(state, selected) {
       : `<i style="right:50%;width:${w}%;background:var(--loss)"></i>`;
     const war = warsOf(state, n.tag).includes(me);
     return `<tr data-tag="${esc(n.tag)}" class="${n.tag === selected ? 'is-selected' : ''} ${n.capitulated ? 'is-out' : ''}">
-      <td><span class="nm"><span class="swatch" style="background:${esc(n.color)}"></span>${esc(n.name)}</span></td>
+      <td><span class="nm"><span class="swatch" style="${swatchStyle(n)}"></span>${esc(n.name)}</span></td>
       <td>${n.faction ? `<span class="badge faction">${esc(n.faction)}</span>` : '<span class="muted">none</span>'}</td>
       <td><span class="rel" title="${r}">${fill}</span> ${r}</td>
       <td>${war ? '<span class="badge">at war</span>' : ''}</td></tr>`;

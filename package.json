@@ -25,6 +25,7 @@
   "private": true,
   "devDependencies": {
     "d3": "^7.9.0",
+    "flag-icons": "^7.5.0",
     "mapshaper": "^0.7.61",
     "topojson-client": "^3.1.0"
   }

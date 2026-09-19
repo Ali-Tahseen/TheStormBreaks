@@ -2,6 +2,7 @@
 
 import { api, listen } from './api.js';
 import { WorldMap } from './map.js';
+import { swatchStyle } from './flags.js';
 import {
   esc, fmtDate, nationCard, indicatorTab, diplomacyTab, journalTab,
   logHTML, lessonHTML, hoodHTML, reportHTML
@@ -140,7 +141,7 @@ function showTooltip(name, e) {
   const occ = Object.entries(t.occupation || {}).map(([k, v]) => `${esc(s.nations[k]?.name || k)} ${v}%`).join(', ');
   const war = owner.tag !== s.player && s.wars.some(w => w.includes(owner.tag) && w.includes(s.player));
   tip.innerHTML = `<strong>${esc(name)}</strong><br>
-    <span class="swatch" style="background:${esc(owner.color)}"></span> ${esc(owner.name)}${owner.tag === s.player ? ' (you)' : ''}
+    <span class="swatch" style="${swatchStyle(owner)}"></span> ${esc(owner.name)}${owner.tag === s.player ? ' (you)' : ''}
     ${occ ? `<br>Occupied by ${occ}` : ''}${war ? '<br><span style="color:var(--loss)">At war with you</span>' : ''}`;
   tip.hidden = false;
   const x = Math.min(innerWidth - 270, e.clientX + 14), y = Math.min(innerHeight - 90, e.clientY + 14);
@@ -225,7 +226,7 @@ function closeLesson() {
 function nationOptionsHTML(sc) {
   return (sc.playable || []).map((n, i) => `
     <label><input type="radio" name="player" value="${esc(n.tag)}" ${i === 0 ? 'checked' : ''}>
-      <span class="n"><span class="swatch" style="background:${esc(n.color)}"></span>${esc(n.name)}</span>
+      <span class="n"><span class="swatch" style="${swatchStyle(n)}"></span>${esc(n.name)}</span>
       <span class="l">${esc(n.leader)}</span></label>`).join('');
 }
 
