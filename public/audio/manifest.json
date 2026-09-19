@@ -52,70 +52,70 @@
   "music": [
     {
       "id": "peace",
-      "src": "/audio/music/peace.mp3",
+      "src": "/audio/music/beds/peace.mp3",
       "loop": true,
       "scenario": "ww2-1939",
       "mood": "peace"
     },
     {
       "id": "wartime_quiet",
-      "src": "/audio/music/wartime_quiet.mp3",
+      "src": "/audio/music/beds/wartime_quiet.mp3",
       "loop": true,
       "scenario": "ww2-1939",
       "mood": "wartime"
     },
     {
       "id": "wartime_fog",
-      "src": "/audio/music/wartime_fog.mp3",
+      "src": "/audio/music/beds/wartime_fog.mp3",
       "loop": true,
       "scenario": "ww2-1939",
       "mood": "wartime"
     },
     {
       "id": "wartime_lamp",
-      "src": "/audio/music/wartime_lamp.mp3",
+      "src": "/audio/music/beds/wartime_lamp.mp3",
       "loop": true,
       "scenario": "ww2-1939",
       "mood": "wartime"
     },
     {
       "id": "ww2_late",
-      "src": "/audio/music/ww2_late.mp3",
+      "src": "/audio/music/beds/ww2_late.mp3",
       "loop": true,
       "scenario": "ww2-1939",
       "mood": "late"
     },
     {
       "id": "china_peace",
-      "src": "/audio/music/china_peace.mp3",
+      "src": "/audio/music/beds/china_peace.mp3",
       "loop": true,
       "scenario": "china-1939",
       "mood": "peace"
     },
     {
       "id": "china_wartime_quiet",
-      "src": "/audio/music/china_wartime_quiet.mp3",
+      "src": "/audio/music/beds/china_wartime_quiet.mp3",
       "loop": true,
       "scenario": "china-1939",
       "mood": "wartime"
     },
     {
       "id": "china_wartime_mist",
-      "src": "/audio/music/china_wartime_mist.mp3",
+      "src": "/audio/music/beds/china_wartime_mist.mp3",
       "loop": true,
       "scenario": "china-1939",
       "mood": "wartime"
     },
     {
       "id": "china_wartime_river",
-      "src": "/audio/music/china_wartime_river.mp3",
+      "src": "/audio/music/beds/china_wartime_river.mp3",
       "loop": true,
       "scenario": "china-1939",
       "mood": "wartime"
     },
     {
       "id": "china_late",
-      "src": "/audio/music/china_late.mp3",
+      "src": "/audio/music/beds/china_late.mp3",
       "loop": true,
       "scenario": "china-1939",
       "mood": "late"

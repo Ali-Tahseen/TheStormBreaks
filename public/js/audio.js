@@ -22,7 +22,7 @@ export class AudioEngine {
     this.channels = {
       narration: { audio: null },
       sfx: { audio: null },
-      music: { audio: null }
+      music: { a: null, b: null, active: 'a', fading: false }
     };
     this.enabled = true;
     this.rate = DEFAULT_RATE;
@@ -31,12 +31,15 @@ export class AudioEngine {
     this.onChange = onChange;
     this.manifest = null;
     this.musicId = null;
-    this._musicVolume = 0.12;
+    this._musicVolume = 0.16;
+    this._musicFade = 8;
     this._sfxVolume = 0.55;
     this._pool = [];
     this._poolKey = '';
     this._poolIndex = 0;
     this._variantTimer = null;
+    this._fadeTimer = null;
+    this._ducked = false;
     this._onMusicTime = null;
     this._ctrl = null;
     this._loadPrefs();
@@ -90,11 +93,6 @@ export class AudioEngine {
     this._playPoolTrack();
   }
 
-  duck(on) {
-    const el = this.channels.music.audio;
-    if (el) el.volume = on ? 0.04 : this._musicVolume;
-  }
-
   _shuffle(list) {
     const out = [...list];
     for (let i = out.length - 1; i > 0; i--) {
@@ -104,34 +102,137 @@ export class AudioEngine {
     return out;
   }
 
-  _playPoolTrack() {
+  duck(on) {
+    this._ducked = Boolean(on);
+    const vol = this._ducked ? 0.04 : this._musicVolume;
+    const el = this._activeMusic();
+    if (el && !this.channels.music.fading) el.volume = vol;
+  }
+
+  _musicPair() {
+    const m = this.channels.music;
+    if (!m.a) {
+      m.a = new Audio();
+      m.b = new Audio();
+      m.a.preload = 'auto';
+      m.b.preload = 'auto';
+      m.active = 'a';
+      m.fading = false;
+    }
+    return m;
+  }
+
+  _activeMusic() {
+    const m = this._musicPair();
+    return m[m.active];
+  }
+
+  _idleMusic() {
+    const m = this._musicPair();
+    return m.active === 'a' ? m.b : m.a;
+  }
+
+  _musicTargetVolume() {
+    return this._ducked ? 0.04 : this._musicVolume;
+  }
+
+  _playPoolTrack({ crossfade = false } = {}) {
     const id = this._pool[this._poolIndex];
     const clip = this._clip('music', id);
     if (!clip) return;
-    const el = this._channel('music');
-    this._unbindMusicLoop(el);
-    el.loop = true;
-    el.volume = this._musicVolume;
-    el.src = clip.src;
+    const m = this._musicPair();
+    this._unbindMusicLoop();
+    const el = this._activeMusic();
+    const other = this._idleMusic();
+    el.loop = false;
+    other.loop = false;
     this.musicId = id;
-    this._bindMusicLoop(el);
-    el.play().catch(() => {});
+    if (crossfade && el.src && !el.paused && !m.fading) {
+      other.src = clip.src;
+      other.volume = 0;
+      m.fading = true;
+      other.play().then(() => this._crossfade(el, other, 6)).catch(() => {
+        m.fading = false;
+        this._startMusic(el, other, clip.src);
+      });
+      this._scheduleVariantChange();
+      return;
+    }
+    this._startMusic(el, other, clip.src);
     this._scheduleVariantChange();
   }
 
-  _bindMusicLoop(el) {
-    const pad = 0.15;
+  _startMusic(el, other, src) {
+    const m = this.channels.music;
+    clearTimeout(this._fadeTimer);
+    m.fading = false;
+    el.src = src;
+    other.src = src;
+    other.pause();
+    other.volume = 0;
+    el.volume = this._musicTargetVolume();
+    el.play().catch(() => {});
+    this._bindMusicLoop();
+  }
+
+  _loopFadeSeconds(duration) {
+    if (!duration || !Number.isFinite(duration)) return this._musicFade;
+    return Math.min(this._musicFade, Math.max(1.5, duration / 8));
+  }
+
+  _bindMusicLoop() {
+    this._unbindMusicLoop();
+    const el = this._activeMusic();
     this._onMusicTime = () => {
-      const d = el.duration;
-      if (!d || !Number.isFinite(d) || d <= pad * 4) return;
-      if (el.currentTime >= d - pad) el.currentTime = pad;
+      const m = this.channels.music;
+      const fade = this._loopFadeSeconds(el.duration);
+      if (!el.duration || !Number.isFinite(el.duration) || el.duration <= fade * 2) return;
+      if (m.fading) return;
+      if (el.currentTime < el.duration - fade) return;
+      m.fading = true;
+      const next = this._idleMusic();
+      next.currentTime = 0;
+      next.volume = 0;
+      next.play().then(() => this._crossfade(el, next, fade)).catch(() => {
+        m.fading = false;
+      });
     };
     el.addEventListener('timeupdate', this._onMusicTime);
   }
 
-  _unbindMusicLoop(el) {
-    if (el && this._onMusicTime) el.removeEventListener('timeupdate', this._onMusicTime);
+  _unbindMusicLoop() {
+    const m = this.channels.music;
+    if (this._onMusicTime && m.a) m.a.removeEventListener('timeupdate', this._onMusicTime);
+    if (this._onMusicTime && m.b) m.b.removeEventListener('timeupdate', this._onMusicTime);
     this._onMusicTime = null;
+  }
+
+  _crossfade(from, to, seconds) {
+    this._unbindMusicLoop();
+    const steps = Math.max(20, Math.round(seconds * 4));
+    const stepMs = (seconds * 1000) / steps;
+    const target = this._musicTargetVolume();
+    let i = 0;
+    const tick = () => {
+      i += 1;
+      const t = Math.min(1, i / steps);
+      const a = t * Math.PI / 2;
+      from.volume = target * Math.cos(a);
+      to.volume = target * Math.sin(a);
+      if (t < 1) {
+        this._fadeTimer = setTimeout(tick, stepMs);
+        return;
+      }
+      from.pause();
+      if (from.src !== to.src) from.src = to.src;
+      from.currentTime = 0;
+      from.volume = 0;
+      to.volume = target;
+      this.channels.music.active = this.channels.music.active === 'a' ? 'b' : 'a';
+      this.channels.music.fading = false;
+      this._bindMusicLoop();
+    };
+    tick();
   }
 
   _scheduleVariantChange() {
@@ -147,22 +248,26 @@ export class AudioEngine {
     let next = this._poolIndex;
     while (next === this._poolIndex) next = Math.floor(Math.random() * this._pool.length);
     this._poolIndex = next;
-    this._playPoolTrack();
+    this._playPoolTrack({ crossfade: true });
   }
 
   _stopMusic() {
     clearTimeout(this._variantTimer);
+    clearTimeout(this._fadeTimer);
     this._variantTimer = null;
-    const el = this.channels.music.audio;
+    this._fadeTimer = null;
+    this._unbindMusicLoop();
     this.musicId = null;
     this._pool = [];
     this._poolKey = '';
-    if (!el) return;
-    this._unbindMusicLoop(el);
-    el.loop = false;
-    el.pause();
-    el.removeAttribute('src');
-    el.load();
+    const m = this.channels.music;
+    m.fading = false;
+    for (const el of [m.a, m.b]) {
+      if (!el) continue;
+      el.pause();
+      el.removeAttribute('src');
+      el.load();
+    }
   }
 
   clipUrl({ turn, kind }) {

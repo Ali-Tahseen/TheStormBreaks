@@ -1,6 +1,7 @@
-// Bake SFX and looping music beds via ElevenLabs. Writes public/audio/.
+// Bake SFX (sound-generation) and music beds (music_v2_5) via ElevenLabs.
 // Run:  node tools/generate-audio.mjs
-//        node tools/generate-audio.mjs --force   (overwrite existing files)
+//        node tools/generate-audio.mjs --force          overwrite existing files
+//        node tools/generate-audio.mjs --force --music  music beds only
 
 import dotenv from 'dotenv';
 dotenv.config({ quiet: true });
@@ -12,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'public', 'audio');
 const FORCE = process.argv.includes('--force');
+const MUSIC_ONLY = process.argv.includes('--music');
 const API = 'https://api.elevenlabs.io';
 const SFX_TIMEOUT_MS = 90000;
 const MUSIC_TIMEOUT_MS = 300000;
@@ -97,142 +99,98 @@ const SFX = [
   }
 ];
 
+const AVOID = 'Instrumental only. No vocals, no choir, no lyrics, no drums, no snare, no march, no anthem, no fanfare, no gunfire, no drone, no ambient pad, no noise wash, no distortion.';
+
 const MUSIC = [
   {
     id: 'peace',
-    src: 'music/peace.mp3',
+    src: 'music/beds/peace.mp3',
     loop: true,
     scenario: 'ww2-1939',
     mood: 'peace',
-    music_length_ms: 32000,
-    prompt: [
-      'Instrumental only. Quiet 1940s documentary underscore for a strategy map of Europe.',
-      'Low strings, muted brass, no choir, no drums, no vocals, no national anthem.',
-      'Slow, 72 BPM, constant dynamics, no intro swell, no ending cadence.',
-      'Designed to loop seamlessly forever. Classroom-safe, serious not grim, no horror drones.'
-    ].join(' ')
+    music_length_ms: 90000,
+    prompt: `A beautiful lyrical instrumental film score for a 1939 history documentary. A piano melody you can hum, answered by warm violins and cellos. Major key, hopeful, elegant chamber orchestra, 72 BPM, soft dynamics, polished analog recording. ${AVOID}`
   },
   {
     id: 'wartime_quiet',
-    src: 'music/wartime_quiet.mp3',
+    src: 'music/beds/wartime_quiet.mp3',
     loop: true,
     scenario: 'ww2-1939',
     mood: 'wartime',
-    music_length_ms: 40000,
-    prompt: [
-      'Instrumental only. Very quiet background furniture for a classroom strategy game set in 1939 Europe.',
-      'Soft low string pad only, almost ambient, no melody you can hum, no drums, no snare, no trumpet, no ostinato.',
-      'Unhurried, about 60 BPM or unmetered. Easy to ignore while reading. No choir, no vocals, no anthem.',
-      'Constant very low dynamics, no swell, no cadence, seamless loop.'
-    ].join(' ')
+    music_length_ms: 90000,
+    prompt: `A beautiful somber instrumental. A singing cello melody with gentle piano and a small string ensemble. 1940s film score, D minor, 60 BPM, tender and listenable, never loud, never noisy. ${AVOID}`
   },
   {
     id: 'wartime_fog',
-    src: 'music/wartime_fog.mp3',
+    src: 'music/beds/wartime_fog.mp3',
     loop: true,
     scenario: 'ww2-1939',
     mood: 'wartime',
-    music_length_ms: 40000,
-    prompt: [
-      'Instrumental only. Soft foggy chamber strings for a map table, 1939, barely there.',
-      'Two or three slow cello notes, long gaps, no percussion, no brass, no piano hook, no repeating riff.',
-      'Grey and calm, not sad, not epic. No vocals, no choir, no anthem, no newsreel energy.',
-      'Seamless quiet loop, even level, classroom-safe, easy to talk over.'
-    ].join(' ')
+    music_length_ms: 90000,
+    prompt: `A beautiful impressionist instrumental. Soft harp and piano phrases over warm strings, misty but clearly melodic, 66 BPM, cinematic documentary, delicate and pretty. ${AVOID}`
   },
   {
     id: 'wartime_lamp',
-    src: 'music/wartime_lamp.mp3',
+    src: 'music/beds/wartime_lamp.mp3',
     loop: true,
     scenario: 'ww2-1939',
     mood: 'wartime',
-    music_length_ms: 40000,
-    prompt: [
-      'Instrumental only. Warm lamp-lit documentary underscore, very sparse piano fifths and muted strings.',
-      'Soft, slow, 58 BPM. No drums, no snare, no trumpet, no march, no melody that repeats every four bars.',
-      'Background only. No vocals, no choir, no anthem. Seamless loop, no intro, no ending.'
-    ].join(' ')
+    music_length_ms: 90000,
+    prompt: `A beautiful lamplit piano piece with muted strings. A clear lyrical melody, late-evening 1940s radio drama underscore, intimate, 64 BPM, warm analog tone, soft dynamics. ${AVOID}`
   },
   {
     id: 'ww2_late',
-    src: 'music/ww2_late.mp3',
+    src: 'music/beds/ww2_late.mp3',
     loop: true,
     scenario: 'ww2-1939',
     mood: 'late',
-    music_length_ms: 32000,
-    prompt: [
-      'Instrumental only. Weary late-war European documentary bed for a strategy map, 1944-1945.',
-      'Thinner low strings, muted horns, sparse snare, slower than a 1939 newsreel, 84 BPM.',
-      'No victory parade, no anthem, no choir, no vocals, no explosions, no heroic fanfare.',
-      'Constant dynamics, no intro, no ending cadence, seamless endless loop. Classroom-safe.'
-    ].join(' ')
+    music_length_ms: 90000,
+    prompt: `A beautiful weary string quartet with a thin piano melody. 1944 documentary score, A minor, 58 BPM, tender, unresolved, still lyrical and easy on the ear. ${AVOID}`
   },
   {
     id: 'china_peace',
-    src: 'music/china_peace.mp3',
+    src: 'music/beds/china_peace.mp3',
     loop: true,
     scenario: 'china-1939',
     mood: 'peace',
-    music_length_ms: 32000,
-    prompt: [
-      'Instrumental only. Quiet 1939 documentary underscore for a map of China\'s interior.',
-      'Pentatonic chamber strings, gentle plucked zither, soft bamboo flute far in the background.',
-      'No drums, no choir, no vocals, no national anthem, no propaganda song, no military march.',
-      'Slow, 70 BPM, constant level, no intro swell, no cadence, seamless endless loop. Classroom-safe.'
-    ].join(' ')
+    music_length_ms: 90000,
+    prompt: `A beautiful 1930s Shanghai cinema instrumental. A clear pentatonic piano melody you can hum, warm strings, gentle plucked zither, elegant salon, 68 BPM, hopeful, polished. ${AVOID}`
   },
   {
     id: 'china_wartime_quiet',
-    src: 'music/china_wartime_quiet.mp3',
+    src: 'music/beds/china_wartime_quiet.mp3',
     loop: true,
     scenario: 'china-1939',
     mood: 'wartime',
-    music_length_ms: 40000,
-    prompt: [
-      'Instrumental only. Very quiet pentatonic string pad for a China map in 1939. Background furniture.',
-      'No drums, no woodblock, no brass, no flute hook, no melody you can hum, no anthem, no march.',
-      'Slow and even, easy to ignore while reading. No vocals, no choir. Seamless quiet loop.'
-    ].join(' ')
+    music_length_ms: 90000,
+    prompt: `A beautiful melancholic instrumental in a pentatonic mode. A singing erhu-like melody over soft piano and strings. 1930s Chinese film score, 62 BPM, tender and dignified. ${AVOID}`
   },
   {
     id: 'china_wartime_mist',
-    src: 'music/china_wartime_mist.mp3',
+    src: 'music/beds/china_wartime_mist.mp3',
     loop: true,
     scenario: 'china-1939',
     mood: 'wartime',
-    music_length_ms: 40000,
-    prompt: [
-      'Instrumental only. Soft misty zither harmonics and low strings, sparse, long silences between notes.',
-      'No percussion, no military music, no Japanese march, no Chinese anthem, no vocals, no choir.',
-      'Calm documentary air, not tense. Seamless quiet loop, classroom-safe, easy to talk over.'
-    ].join(' ')
+    music_length_ms: 90000,
+    prompt: `A beautiful misty instrumental. Pentatonic piano and harp phrases, a distant bamboo flute answering the melody, soft strings, 64 BPM, airy and pretty. ${AVOID}`
   },
   {
     id: 'china_wartime_river',
-    src: 'music/china_wartime_river.mp3',
+    src: 'music/beds/china_wartime_river.mp3',
     loop: true,
     scenario: 'china-1939',
     mood: 'wartime',
-    music_length_ms: 40000,
-    prompt: [
-      'Instrumental only. Slow river-like low strings, pentatonic but almost drone, 1939 China documentary.',
-      'No drums, no flute lead, no catchy motif, no anthem, no march, no vocals.',
-      'Very quiet, constant level, seamless loop, easy to ignore while reading a lesson.'
-    ].join(' ')
+    music_length_ms: 90000,
+    prompt: `A beautiful flowing instrumental. Pentatonic piano arpeggios and a lyrical cello melody, like a river, 1930s Chinese cinema, 66 BPM, warm chamber orchestra. ${AVOID}`
   },
   {
     id: 'china_late',
-    src: 'music/china_late.mp3',
+    src: 'music/beds/china_late.mp3',
     loop: true,
     scenario: 'china-1939',
     mood: 'late',
-    music_length_ms: 32000,
-    prompt: [
-      'Instrumental only. Late War of Resistance documentary bed, 1944-1945, weary but unresolved.',
-      'Thin pentatonic strings, sparse plucked notes, very little percussion, 80 BPM.',
-      'No anthem, no choir, no vocals, no victory fanfare, no military march, no gunfire.',
-      'Constant dynamics, no intro, no ending cadence, seamless endless loop. Classroom-safe.'
-    ].join(' ')
+    music_length_ms: 90000,
+    prompt: `A beautiful sparse pentatonic piano melody with thin strings. Late-war Chinese film score, 56 BPM, tender, intimate, still clearly a melody. ${AVOID}`
   }
 ];
 
@@ -290,23 +248,59 @@ async function generateSfx(clip) {
   console.log(`wrote ${clip.src} (${buf.length} bytes)`);
 }
 
+async function postMusic(body, timeoutMs = MUSIC_TIMEOUT_MS) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${API}/v1/music?output_format=mp3_44100_192`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'audio/mpeg',
+        'xi-api-key': apiKey
+      },
+      body: JSON.stringify(body),
+      signal: ctrl.signal
+    });
+    const type = res.headers.get('content-type') || '';
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (!res.ok) {
+      const errText = buf.toString('utf8').slice(0, 800);
+      throw new Error(`HTTP ${res.status} (${type}): ${errText}`);
+    }
+    if (!buf.length) throw new Error('Empty audio body');
+    const songId = res.headers.get('song-id') || res.headers.get('song_id') || '';
+    return { buf, songId };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function composeOnce(body) {
+  try {
+    return await postMusic(body);
+  } catch (err) {
+    if (body.model_id === 'music_v2_5' && /model|not found|unsupported/i.test(err.message)) {
+      console.warn('model music_v2_5 unavailable, using music_v2');
+      return postMusic({ ...body, model_id: 'music_v2' });
+    }
+    throw err;
+  }
+}
+
 async function generateMusic(clip) {
   const file = dest(clip.src);
   if (fs.existsSync(file) && !FORCE) {
     console.log(`skip  ${clip.src}`);
     return;
   }
-  console.log(`music ${clip.id} (${clip.music_length_ms} ms) …`);
-  const buf = await postAudio(
-    `${API}/v1/music?output_format=mp3_44100_128`,
-    {
-      model_id: 'music_v2_5',
-      prompt: clip.prompt,
-      music_length_ms: clip.music_length_ms,
-      force_instrumental: true
-    },
-    MUSIC_TIMEOUT_MS
-  );
+  console.log(`bed   ${clip.id} (music ${clip.music_length_ms / 1000}s) …`);
+  const { buf } = await composeOnce({
+    model_id: 'music_v2_5',
+    prompt: clip.prompt,
+    music_length_ms: clip.music_length_ms,
+    force_instrumental: true
+  });
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, buf);
   console.log(`wrote ${clip.src} (${buf.length} bytes)`);
@@ -327,23 +321,40 @@ function writeManifest() {
   console.log('wrote manifest.json');
 }
 
+async function mapLimit(items, n, fn) {
+  let i = 0;
+  async function worker() {
+    while (i < items.length) {
+      const idx = i;
+      i += 1;
+      await fn(items[idx]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, worker));
+}
+
 let failed = 0;
-for (const clip of SFX) {
-  try {
-    await generateSfx(clip);
-  } catch (err) {
-    failed += 1;
-    console.error(`FAIL  ${clip.id}: ${err.message}`);
+let lastError = '';
+if (!MUSIC_ONLY) {
+  for (const clip of SFX) {
+    try {
+      await generateSfx(clip);
+    } catch (err) {
+      failed += 1;
+      console.error(`FAIL  ${clip.id}: ${err.message}`);
+    }
   }
 }
-for (const clip of MUSIC) {
+await mapLimit(MUSIC, 2, async (clip) => {
+  if (failed && lastError && /quota_exceeded/.test(lastError)) return;
   try {
     await generateMusic(clip);
   } catch (err) {
     failed += 1;
+    lastError = err.message;
     console.error(`FAIL  ${clip.id}: ${err.message}`);
   }
-}
+});
 writeManifest();
 if (failed) {
   console.error(`${failed} clip(s) failed`);
