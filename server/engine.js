@@ -203,6 +203,44 @@ export function resolveTerritory(state, ref) {
   return null;
 }
 
+// ---------- mention scanning ----------
+const reEsc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Find every nation and territory named in a piece of text (usually the
+ * player's order), using the scenario's aliases. The Game Master gets this so
+ * it uses the exact names, and runTurn uses it to detect a story that claims a
+ * map change the actions never made. Positions are kept so callers can order
+ * the mentions as they appear.
+ * @returns {{ nations: {tag, pos, name}[], territories: {name, pos}[] }}
+ */
+export function scanMentions(state, text) {
+  const scenario = getScenario(state.scenarioId);
+  const lower = ' ' + String(text || '').toLowerCase() + ' ';
+  const nations = [], territories = [];
+  const nationNames = new Map();
+  for (const [alias, tag] of Object.entries(scenario.aliases)) nationNames.set(alias, tag);
+  for (const n of Object.values(state.nations)) if (!n.minor) nationNames.set(n.name.toLowerCase(), n.tag);
+  for (const [alias, tag] of nationNames) {
+    const m = lower.match(new RegExp(`[^a-z]${reEsc(alias)}[^a-z]`));
+    if (m) nations.push({ tag, pos: m.index, name: alias });
+  }
+  const terrNames = new Map();
+  for (const name of Object.keys(state.territories)) terrNames.set(name.toLowerCase(), name);
+  for (const [alias, name] of Object.entries(scenario.territoryAliases)) terrNames.set(alias, name);
+  for (const [lname, name] of terrNames) {
+    const m = lower.match(new RegExp(`[^a-z]${reEsc(lname)}[^a-z]`));
+    if (m) territories.push({ name, pos: m.index });
+  }
+  nations.sort((a, b) => a.pos - b.pos);
+  territories.sort((a, b) => a.pos - b.pos);
+  const seenNation = new Set(), seenTerr = new Set();
+  return {
+    nations: nations.filter(n => !seenNation.has(n.tag) && seenNation.add(n.tag)),
+    territories: territories.filter(t => !seenTerr.has(t.name) && seenTerr.add(t.name))
+  };
+}
+
 // ---------- queries ----------
 export const atWar = (state, a, b) => state.wars.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
 export const warsOf = (state, tag) => state.wars.filter(w => w.includes(tag)).map(([x, y]) => (x === tag ? y : x));

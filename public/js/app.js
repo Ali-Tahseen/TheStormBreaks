@@ -425,6 +425,9 @@ async function sendOrder(order) {
       if (state.gameOver) showEnding();
     });
     if (audioReady() && audio.enabled) playNarration(entry.turn);
+    if (entry.mapWarning) {
+      toast('The story described a change the map could not apply — try naming the exact territory.', true);
+    }
   } catch (err) {
     app.busy = false;
     clearInterval(timer);

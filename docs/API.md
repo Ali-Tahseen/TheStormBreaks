@@ -129,6 +129,7 @@ Returned by `POST /api/report` and stored on the state as `report`. The `metrics
   "feasibilityReason": "...",
   "headline": "...",
   "narrative": "...",
+  "mapWarning": false,   // true when the story claimed a territorial change the engine could not apply
   "meanwhile": [
     {
       "id": "warsaw_falls", "date": "1939-09-27", "title": "Warsaw falls",

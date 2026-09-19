@@ -6,34 +6,8 @@
 // real agents, so everything downstream is identical.
 
 import { getScenario } from './data/scenarios/index.js';
-import { resolveNation, atWar, warsOf, formatDate, relation, territoriesOf } from './engine.js';
+import { resolveNation, atWar, warsOf, formatDate, relation, territoriesOf, scanMentions } from './engine.js';
 import { eventsBetween, eventsNear } from './data/timeline.js';
-
-const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-// Find nations and territories mentioned in the text, with their position.
-function scanMentions(state, text) {
-  const scenario = getScenario(state.scenarioId);
-  const lower = ' ' + text.toLowerCase() + ' ';
-  const nations = [], territories = [];
-  const nationNames = new Map();
-  for (const [alias, tag] of Object.entries(scenario.aliases)) nationNames.set(alias, tag);
-  for (const n of Object.values(state.nations)) if (!n.minor) nationNames.set(n.name.toLowerCase(), n.tag);
-  for (const [name, tag] of nationNames) {
-    const m = lower.match(new RegExp(`[^a-z]${esc(name)}[^a-z]`));
-    if (m) nations.push({ tag, pos: m.index, name });
-  }
-  const terrNames = new Map();
-  for (const name of Object.keys(state.territories)) terrNames.set(name.toLowerCase(), name);
-  for (const [alias, name] of Object.entries(scenario.territoryAliases)) terrNames.set(alias, name);
-  for (const [lname, name] of terrNames) {
-    const m = lower.match(new RegExp(`[^a-z]${esc(lname)}[^a-z]`));
-    if (m) territories.push({ name, pos: m.index });
-  }
-  nations.sort((a, b) => a.pos - b.pos);
-  territories.sort((a, b) => a.pos - b.pos);
-  return { nations, territories };
-}
 
 export function mockGameMaster(state, order) {
   const text = order.toLowerCase();

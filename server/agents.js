@@ -17,7 +17,7 @@
 import {
   applyActions, snapshotIndicators, computeDeltas, checkGameOver,
   summarizeForLLM, formatDate, monthIndex, fromIndex, ACTION_TYPES,
-  warsOf, relation, territoriesOf
+  warsOf, relation, territoriesOf, scanMentions
 } from './engine.js';
 import { runClockSkip } from './historyClock.js';
 import { getScenario } from './data/scenarios/index.js';
@@ -75,7 +75,8 @@ The student plays ${state.nations[state.player].name}. Each turn they type an or
 4. Write what happened as a short, vivid history-book narrative (2-3 paragraphs, under 220 words total) that blends real history with the student's changes.
 5. Emit ACTIONS that make the game state match the narrative — every number you change must be explained by the story.
 6. The map only changes through actions. If your narrative says a nation surrendered, capitulated, was defeated or lost/gained land, you MUST emit the matching capitulate / occupy_territory / annex_territory / liberate_territory action. Never describe a map change without its action, and never invent an action the narrative does not explain.
-OFF-STAGE HISTORY: a history clock inside the game applies the great campaigns of the wider war (for example the Soviet entry into eastern Poland, the fall of France, Japan's move into Indochina) automatically at their real dates, after your resolution. Do not declare wars between nations you do not play, and do not occupy or annex territories outside your own front. You MAY change occupation on the player's own front in response to their order: a counter-attack lowers the occupier's percent, a failed defense raises it. Use occupy_territory with delta, never percent, so you adjust rather than overwrite the clock. Your story covers the player's order and its direct consequences.
+OFF-STAGE HISTORY: a history clock inside the game applies the wider war's own great campaigns (for example the fall of France, Operation Barbarossa, Japan's move into Indochina) automatically at their real dates, after your resolution. Do not start those unrelated campaigns yourself, and do not move fronts the clock owns.
+YOUR JOB IS THE PLAYER'S ORDER. You must apply its direct map consequences, including taking or annexing neutral or adjacent territory the player attacks, pressures, or gains by pact — even when no historical script exists for it. Resolve collective names to the exact territories and emit one action per territory: "the Baltic states" → Estonia, Latvia, Lithuania; "Bessarabia" → Bessarabia and Bukovina. Use the exact territory names from the world data. For a change on a front the clock owns, use occupy_territory with delta (never percent) so you adjust rather than overwrite it. Your story covers the player's order and its direct consequences.
 ${realism}
 ${actionSpec(scenario)}
 ${SAFETY}
@@ -332,9 +333,80 @@ function claimsMapChange(gm) {
 
 // The narrative claims a map change but the actions do not make one. Catches
 // the failure mode where the model narrates a map change but forgets the
-// action, leaving the map out of date (e.g. France "capitulates" in the story).
-function gmDiverges(gm) {
-  return claimsMapChange(gm) && !gm.actions.some(a => TERRITORY_ACTIONS.includes(a.type));
+// action, leaving the map out of date (e.g. the player annexes the Baltic
+// states, the story says so, but no territory action arrives).
+const ORDER_CHANGE_RE = /\b(annex|absorb|incorporate|cede|occupy|seize|capture|conquer|invade|liberate|take over|press for|demand)\b/i;
+
+function needsRepair(state, order, gm, gmResult, mentions) {
+  if (!['success', 'partial'].includes(gm.feasibility)) return false;
+  const appliedTerritory = gmResult.applied.some(a => TERRITORY_ACTIONS.includes(a.type));
+  // A territory action was emitted but the engine refused it (usually a
+  // collective or misspelled name) — repair can fix the names.
+  if (gmResult.rejected.some(r => TERRITORY_ACTIONS.includes(r.action?.type))) return true;
+  if (claimsMapChange(gm) && !appliedTerritory) return true;
+  // The order clearly means to change a foreign territory but the turn was a
+  // complete no-op (no actions at all were applied).
+  const foreign = (mentions?.territories || []).filter(t => state.territories[t.name]?.owner !== state.player);
+  if (foreign.length && ORDER_CHANGE_RE.test(order) && gmResult.applied.length === 0) return true;
+  return false;
+}
+
+// A small, focused agent that turns the Game Master's story into the engine
+// actions it forgot. It only ever runs when needsRepair() is true, so normal
+// turns pay nothing for it, and its prompt is tiny compared with the full
+// Game Master prompt it replaces.
+function effectsSystem(scenario, lang) {
+  return `You are the action writer for the engine of an educational grand-strategy game set in ${scenario.era}. The Game Master has already written what happened; your only job is to return the engine ACTIONS that make the board match that story. The Game Master sometimes describes a territorial change but forgets the action — supply it.
+Rules:
+- Output JSON only, exactly this shape: {"actions": [ ... ]}
+- Add ONLY actions the story already describes. If the story changes no land, ownership, war, faction or relation, return an empty "actions" array.
+- The map changes only through actions. A nation that is annexed, occupied, liberated or surrenders needs the matching action.
+- Use nation TAGS (e.g. "SOV") and the EXACT territory names from the world data. Never use collective names: emit one action per territory ("the Baltic states" is three actions: Estonia, Latvia, Lithuania).
+- Do not start campaigns the history clock owns; apply only the player's order and its direct consequences.
+${actionSpec(scenario)}
+Write any text fields in ${LANGS[lang] || 'English'}. Keep JSON keys and action types in English.`;
+}
+
+function effectsRequest(state, order, gm, rejected, mentions) {
+  return {
+    task: 'write_actions',
+    player: state.player,
+    player_nation: state.nations[state.player].name,
+    player_order: order,
+    game_master_story: {
+      feasibility: gm.feasibility,
+      headline: gm.headline,
+      narrative: gm.narrative.slice(0, 1400),
+      reason: gm.feasibility_reason
+    },
+    actions_the_engine_rejected: (rejected || []).map(r => ({ action: r.action, reason: r.reason })),
+    territories_mentioned_in_the_order: (mentions?.territories || []).map(t => t.name),
+    nations_mentioned_in_the_order: (mentions?.nations || []).map(n => n.tag),
+    territories: Object.entries(state.territories).map(([name, t]) => {
+      const occ = Object.entries(t.occupation).map(([k, v]) => `${k} ${v}%`).join(', ');
+      return occ ? `${name}: ${t.owner} (occupied: ${occ})` : `${name}: ${t.owner}`;
+    }),
+    nations: Object.values(state.nations).filter(n => !n.minor)
+      .map(n => ({ tag: n.tag, name: n.name, capitulated: n.capitulated || undefined })),
+    wars: state.wars.map(([a, b]) => `${a} vs ${b}`)
+  };
+}
+
+function cleanEffects(j) {
+  return { actions: Array.isArray(j?.actions) ? j.actions : [] };
+}
+
+async function repairEffects(state, order, gm, rejected, mentions, lang, debug) {
+  const scenario = getScenario(state.scenarioId);
+  const request = effectsRequest(state, order, gm, rejected, mentions);
+  const r = await chatJSON(effectsSystem(scenario, lang), request, { temperature: 0.2, maxTokens: 700 });
+  const actions = cleanEffects(r.json).actions;
+  const result = applyActions(state, actions, { source: 'game_master' });
+  debug?.agents.push({
+    agent: 'Effects (repair)', ms: r.ms, request, response: r.json,
+    applied: result.applied, rejected: result.rejected
+  });
+  return result;
 }
 
 /**
@@ -350,39 +422,46 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
   state.lastChangedTerritories = [];
 
   // ---- 1. Game Master ----
+  // Tell the model exactly which territories/nations the order names, so it
+  // uses the real names instead of guessing (or writing "the Baltics").
+  const mentions = scanMentions(state, order);
   const gmRequest = {
     task: 'resolve_player_order',
     player_order: order,
+    ...(mentions.territories.length ? { territories_mentioned_in_the_order: mentions.territories.map(t => t.name) } : {}),
+    ...(mentions.nations.length ? { nations_mentioned_in_the_order: mentions.nations.map(n => n.tag) } : {}),
     world: summarizeForLLM(state),
     real_history_nearby: eventsNear(scenario.timeline, state.date, 1, 4).map(e => ({ date: e.date, title: e.title, summary: e.summary }))
   };
   let gm;
   if (useLLM) {
-    const gmSystem = gameMasterSystem(state, lang);
-    const gmCall = (request, temperature) => chatJSON(gmSystem, request, { temperature, maxTokens: 3500 });
-    let r = await gmCall(gmRequest, 0.8);
+    const r = await chatJSON(gameMasterSystem(state, lang), gmRequest, { temperature: 0.8, maxTokens: 3500 });
     gm = cleanGM(r.json);
-    // If the narrative claims a map change but no territory action was emitted,
-    // ask once more for the matching actions. This is the failure mode that
-    // left France "capitulated" in the story but unchanged on the map.
-    if (gmDiverges(gm)) {
-      const retryRequest = {
-        ...gmRequest,
-        correction: 'Your previous answer described a territorial or surrender change but emitted no matching territory action. Keep the same outcome and add the correct actions (capitulate / occupy_territory / annex_territory / liberate_territory).'
-      };
-      r = await gmCall(retryRequest, 0.6);
-      const gm2 = cleanGM(r.json);
-      debug.agents.push({ agent: 'Game Master', note: 'corrective retry after narrative/action divergence', ms: r.ms, request: retryRequest, response: r.json });
-      gm = gm2;
-    }
     debug.agents.push({ agent: 'Game Master', ms: r.ms, request: gmRequest, response: r.json });
   } else {
     gm = cleanGM(mockGameMaster(state, order));
     debug.agents.push({ agent: 'Game Master (offline demo)', ms: 0, request: gmRequest, response: gm });
   }
 
-  const gmResult = applyActions(state, gm.actions, { source: 'game_master' });
-  if (claimsMapChange(gm) && !gmResult.applied.some(a => TERRITORY_ACTIONS.includes(a.type))) {
+  let gmResult = applyActions(state, gm.actions, { source: 'game_master' });
+
+  // The Game Master sometimes narrates a map change without emitting the
+  // action. A small, focused call repairs just the missing actions. It runs
+  // before the history clock so the clock's preconditions see the new board.
+  if (useLLM && needsRepair(state, order, gm, gmResult, mentions)) {
+    try {
+      const repair = await repairEffects(state, order, gm, gmResult.rejected, mentions, lang, debug);
+      gmResult = {
+        applied: [...gmResult.applied, ...repair.applied],
+        rejected: [...gmResult.rejected, ...repair.rejected]
+      };
+    } catch (err) {
+      debug.agents.push({ agent: 'Effects (repair)', error: err.message });
+    }
+  }
+
+  const mapWarning = claimsMapChange(gm) && !gmResult.applied.some(a => TERRITORY_ACTIONS.includes(a.type));
+  if (mapWarning) {
     debug.agents.push({ agent: 'Game Master', warning: 'Narrative describes a territorial or surrender change but no such action was applied; the map may not match the story.' });
   }
 
@@ -487,6 +566,7 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
     feasibilityReason: gm.feasibility_reason,
     headline: gm.headline,
     narrative: gm.narrative,
+    mapWarning,
     meanwhile: [...clock.fired, ...clock.hints],
     reactions: rivals.reactions,
     advisors,
@@ -630,4 +710,4 @@ export async function generateReport(state, { lang = 'en', regenerate = false } 
   return state.report;
 }
 
-export { monthIndex, fromIndex, ACTION_TYPES };
+export { monthIndex, fromIndex, ACTION_TYPES, needsRepair, cleanEffects };
