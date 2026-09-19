@@ -50,7 +50,8 @@ function summarize(s) {
     nations: majors.map(n => ({ tag: n.tag, name: n.name, leader: n.leader, faction: n.faction, capitulated: n.capitulated, indicators: n.indicators })),
     occupied: Object.entries(s.territories).filter(([, t]) => Object.keys(t.occupation).length)
       .map(([name, t]) => ({ territory: name, owner: t.owner, occupation: t.occupation })),
-    lastTurn: s.journal.at(-1) ? { headline: s.journal.at(-1).headline, narrative: s.journal.at(-1).narrative } : null
+    lastTurn: s.journal.at(-1) ? { headline: s.journal.at(-1).headline, narrative: s.journal.at(-1).narrative } : null,
+    advisors: s.advisors || null
   };
 }
 
@@ -72,7 +73,7 @@ server.registerTool('take_turn', {
     const { entry } = await call('POST', '/api/turn', { order });
     return text({
       period: `${entry.dateBefore} -> ${entry.dateAfter}`, headline: entry.headline, feasibility: entry.feasibility,
-      narrative: entry.narrative, advisorNotes: entry.advisorNotes, reactions: entry.reactions, lesson: entry.lesson
+      narrative: entry.narrative, advisorNotes: entry.advisorNotes, advisors: entry.advisors, reactions: entry.reactions, lesson: entry.lesson
     });
   } catch (e) { return fail(e); }
 });

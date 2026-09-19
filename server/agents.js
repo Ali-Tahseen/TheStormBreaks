@@ -1,12 +1,14 @@
 // Agents — the AI "game engine".
 // ------------------------------------------------------------------
-// One turn = three agents:
+// One turn = four agents:
 //   1. Game Master     reads the player's order, judges plausibility, decides how
 //                      much time passes, writes the narrative and emits ACTIONS.
 //   2. Rival Leaders   the AI-controlled leaders of the other powers react.
 //   3. History Teacher compares the student's timeline with real history and
 //                      writes a short lesson + reflection question.
-// Agents 2 and 3 run in parallel after agent 1.
+//   4. Advisors        the player's economic advisor, diplomat and military
+//                      advisor brief the leader on the new situation (no actions).
+// After agent 1, the teacher runs in parallel with the chain 2 -> 4.
 // Every agent returns JSON. Only server/engine.js changes the game state.
 //
 // All prompts are built from the active scenario (see server/data/scenarios/),
@@ -14,12 +16,13 @@
 
 import {
   applyActions, advanceTime, snapshotIndicators, computeDeltas, checkGameOver,
-  summarizeForLLM, formatDate, monthIndex, fromIndex, ACTION_TYPES
+  summarizeForLLM, formatDate, monthIndex, fromIndex, ACTION_TYPES,
+  warsOf, relation, territoriesOf
 } from './engine.js';
 import { getScenario } from './data/scenarios/index.js';
 import { eventsNear, eventsBetween } from './data/timeline.js';
 import { chatJSON, llmConfigured } from './llm.js';
-import { mockGameMaster, mockRivals, mockTeacher, mockReport } from './mock.js';
+import { mockGameMaster, mockRivals, mockTeacher, mockReport, mockAdvisors } from './mock.js';
 import { computeMetrics, scoreFromGrades, applyWeights, DEFAULT_WEIGHTS } from './report.js';
 
 const LANGS = {
@@ -44,6 +47,7 @@ ACTIONS you may emit (JSON objects in an "actions" array). Use nation TAGS (e.g.
 - {"type":"set_leader","country":TAG,"leader":TEXT}
 - {"type":"add_event","title":TEXT,"description":TEXT,"category":"war"|"diplomacy"|"economy"|"politics"|"other","territories":[NAMES]}
 Indicators: ${Object.entries(scenario.indicators).map(([k, v]) => `${k} (${v.min}-${v.max}${v.unit ? ' ' + v.unit : ''})`).join(', ')}.
+Political indicators: stability = how firmly the government holds power (0 = collapse); war_support = willingness to fight; army_support = loyalty of the armed forces and officer corps to the government (purges, defeats or unpopular orders lower it; victories, pay and equipment raise it); citizen_support = ordinary people's approval of the government (shortages, repression and casualties lower it; successes and fair rationing raise it).
 Typical changes per turn are small: 1-10 points. GDP changes are a few percent. Big swings only for dramatic events.
 Use add_event only for milestones worth a place on the timeline (wars, treaties, conquests, regime change).`;
 
@@ -119,6 +123,145 @@ Respond with JSON only:
     "exam_skill": "one sentence tip linking this turn to an exam skill (source analysis or essay argument)"
   }
 }`;
+}
+
+// ---------------- 4. Advisors ----------------
+// After every turn the player's three advisors (economy, diplomacy, military)
+// write a short private briefing: one line on the situation at home, one on
+// the situation abroad, and one suggestion. They only advise — they never emit
+// actions, so they cannot change the game.
+export const ADVISOR_ROLES = ['economy', 'diplomacy', 'military'];
+export const ADVISOR_OUTLOOKS = ['good', 'steady', 'worrying', 'critical'];
+
+function advisorsSystem(state, lang) {
+  const scenario = getScenario(state.scenarioId);
+  const p = state.nations[state.player];
+  return `You write the private briefing that the three senior advisors of ${p.name} give their leader (${p.leader}) in an educational grand-strategy game set in ${scenario.era}.
+The advisors:
+- "economy": the economic advisor. GDP, industry, resources, trade, blockades, labour, finance, rationing, inflation.
+- "diplomacy": the diplomat (foreign minister). Allies, rivals, neutrals, factions, relations, public opinion about foreign policy, and what foreign governments are likely to do next.
+- "military": the military advisor (chief of staff). Armed forces, fronts, occupation, readiness, manpower, threats, and how loyal the officer corps is (army support).
+Each advisor gives:
+- "outlook": "good", "steady", "worrying" or "critical" for their own field;
+- "home": ONE sentence on the situation INSIDE the country in their field;
+- "abroad": ONE sentence on the situation OUTSIDE the country that matters for their field;
+- "advice": ONE short suggestion the leader could consider (an option, not an order).
+Each field is at most 28 words. Be concrete: name countries, places and numbers from the game data.
+Ground the briefing in the game state you are given (it may already differ from real history) AND in the real historical context of this date (real_history_so_far): the pressures, shortages, alliances and fears that real officials of this nation faced. Advisors know only what a well-informed official could know at this date, never the future.
+Stay in character as professional advisors of this nation at this date, but state facts, not propaganda. Never recommend or praise atrocities, persecution, deportations, forced labour or attacks on civilians; if such policies are happening, an advisor may note their real consequences soberly.
+${SAFETY}
+Write text fields in ${LANGS[lang] || 'English'}. Keep JSON keys and outlook values in English.
+Respond with JSON only:
+{
+  "economy":   { "outlook": "steady", "home": "...", "abroad": "...", "advice": "..." },
+  "diplomacy": { "outlook": "worrying", "home": "...", "abroad": "...", "advice": "..." },
+  "military":  { "outlook": "good", "home": "...", "abroad": "...", "advice": "..." }
+}`;
+}
+
+// Everything the advisors need, as compact JSON.
+function advisorsRequest(state, lastTurn) {
+  const scenario = getScenario(state.scenarioId);
+  const tag = state.player;
+  const p = state.nations[tag];
+  const name = (t) => state.nations[t]?.name || t;
+  const held = territoriesOf(state, tag);
+  const occupiedAtHome = held
+    .filter(t => Object.keys(state.territories[t].occupation || {}).length)
+    .map(t => `${t}: ${Object.entries(state.territories[t].occupation).map(([o, v]) => `${name(o)} ${v}%`).join(', ')}`);
+  const occupyingAbroad = Object.entries(state.territories)
+    .filter(([, t]) => t.owner !== tag && t.occupation?.[tag])
+    .map(([n, t]) => `${n} (${name(t.owner)}): ${t.occupation[tag]}%`);
+  const relations = Object.values(state.nations)
+    .filter(n => !n.minor && n.tag !== tag && !n.capitulated)
+    .map(n => ({ nation: n.name, faction: n.faction, relation: relation(state, tag, n.tag), at_war_with_us: warsOf(state, tag).includes(n.tag) }))
+    .sort((a, b) => b.relation - a.relation);
+  const idx = monthIndex(state.date);
+  const realSoFar = eventsNear(scenario.timeline, state.date, 3, 0)
+    .concat(scenario.timeline.filter(e => {
+      const [y, m] = e.date.split('-').map(Number);
+      const k = y * 12 + m - 1;
+      return k <= idx && k > idx - 8 && (e.nations || []).includes(tag);
+    }))
+    .filter((e, i, arr) => arr.findIndex(x => x.date === e.date && x.title === e.title) === i)
+    .map(e => ({ date: e.date, title: e.title, summary: e.summary }));
+  return {
+    task: 'brief_the_leader',
+    date: formatDate(state.date),
+    nation: {
+      tag, name: p.name, leader: p.leader, ideology: p.ideology, faction: p.faction,
+      indicators: p.indicators,
+      change_last_turn: state.lastDeltas?.[tag] || {},
+      at_war_with: warsOf(state, tag).map(name),
+      provinces_held: held.length,
+      occupied_at_home: occupiedAtHome,
+      occupying_abroad: occupyingAbroad
+    },
+    relations,
+    last_turn: lastTurn || null,
+    world: summarizeForLLM(state, { full: false }),
+    real_history_so_far: realSoFar
+  };
+}
+
+function cleanAdvisors(j, fallback) {
+  const out = {};
+  for (const role of ADVISOR_ROLES) {
+    const r = (j && typeof j === 'object' && j[role]) || {};
+    const f = fallback?.[role] || {};
+    const text = (v, d) => (String(v ?? '').trim() || String(d ?? '')).slice(0, 260);
+    const outlook = String(r.outlook || '').toLowerCase();
+    out[role] = {
+      outlook: ADVISOR_OUTLOOKS.includes(outlook) ? outlook : (f.outlook || 'steady'),
+      home: text(r.home, f.home),
+      abroad: text(r.abroad, f.abroad),
+      advice: text(r.advice, f.advice)
+    };
+  }
+  return out;
+}
+
+// The briefing shown when a campaign starts (hand-written per nation in the
+// scenario file, or generated from the game data if there is none).
+export function openingBriefing(state) {
+  return {
+    turn: 0, date: formatDate(state.date), source: 'opening',
+    ...cleanAdvisors(mockAdvisors(state, { opening: true }))
+  };
+}
+
+// An offline briefing for the current state (used for old saves that have none).
+export function offlineBriefing(state) {
+  if (!state.journal?.length) return openingBriefing(state);
+  return {
+    turn: state.journal.at(-1).turn, date: formatDate(state.date), source: 'offline',
+    ...cleanAdvisors(mockAdvisors(state))
+  };
+}
+
+/**
+ * Ask the three advisors for their briefing on the current state.
+ * Falls back to the offline generator if the model fails.
+ */
+export async function briefAdvisors(state, { lang = 'en', lastTurn = null, turn = state.turn, debug = null, useLLM = llmConfigured() } = {}) {
+  const offline = cleanAdvisors(mockAdvisors(state));
+  const meta = { turn, date: formatDate(state.date) };
+  if (!useLLM) {
+    debug?.agents.push({ agent: 'Advisors (offline demo)', ms: 0, request: { task: 'brief_the_leader' }, response: offline });
+    return { ...meta, source: 'offline', ...offline };
+  }
+  const request = advisorsRequest(state, lastTurn);
+  try {
+    const r = await chatJSON(advisorsSystem(state, lang), request, { temperature: 0.5, maxTokens: 900 });
+    if (!r.json || typeof r.json !== 'object' || !ADVISOR_ROLES.some(k => r.json[k] && typeof r.json[k] === 'object')) {
+      throw new Error('the advisors returned no briefing');
+    }
+    debug?.agents.push({ agent: 'Advisors', ms: r.ms, request, response: r.json });
+    return { ...meta, source: 'llm', ...cleanAdvisors(r.json, offline) };
+  } catch (err) {
+    debug?.agents.push({ agent: 'Advisors', error: err.message, request, fallback: 'offline briefing used' });
+    return { ...meta, source: 'offline', ...offline };
+  }
 }
 
 // ---------------- validation of agent output ----------------
@@ -210,37 +353,57 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
       .map(e => ({ date: e.date, title: e.title, summary: e.summary, concepts: e.concepts }))
   };
 
+  // The teacher only needs the Game Master's outcome, so it starts at once.
+  // Meanwhile the rival leaders react, their actions are applied, and then the
+  // advisors brief the player on the resulting situation.
   let rivals = { reactions: [], actions: [] };
   let lesson;
+  const teacherTask = useLLM
+    ? chatJSON(teacherSystem(lang, scenario), teacherRequest, { temperature: 0.4, maxTokens: 1200 })
+        .then(r => ({ ok: true, r }), err => ({ ok: false, err }))
+    : null;
+
   if (useLLM) {
-    const [rr, tr] = await Promise.allSettled([
-      chatJSON(rivalsSystem(state, lang), rivalsRequest, { temperature: 0.8, maxTokens: 1500 }),
-      chatJSON(teacherSystem(lang, scenario), teacherRequest, { temperature: 0.4, maxTokens: 1200 })
-    ]);
-    if (rr.status === 'fulfilled') {
-      rivals = cleanRivals(rr.value.json);
-      debug.agents.push({ agent: 'Rival Leaders', ms: rr.value.ms, request: rivalsRequest, response: rr.value.json });
-    } else {
-      debug.agents.push({ agent: 'Rival Leaders', error: rr.reason.message, request: rivalsRequest });
-    }
-    if (tr.status === 'fulfilled') {
-      lesson = cleanLesson(tr.value.json);
-      debug.agents.push({ agent: 'History Teacher', ms: tr.value.ms, request: teacherRequest, response: tr.value.json });
-    } else {
-      lesson = cleanLesson(mockTeacher(state, dateBefore, dateAfter, order));
-      debug.agents.push({ agent: 'History Teacher', error: tr.reason.message, request: teacherRequest, fallback: 'offline lesson used' });
+    try {
+      const rr = await chatJSON(rivalsSystem(state, lang), rivalsRequest, { temperature: 0.8, maxTokens: 1500 });
+      rivals = cleanRivals(rr.json);
+      debug.agents.push({ agent: 'Rival Leaders', ms: rr.ms, request: rivalsRequest, response: rr.json });
+    } catch (err) {
+      debug.agents.push({ agent: 'Rival Leaders', error: err.message, request: rivalsRequest });
     }
   } else {
     rivals = cleanRivals(mockRivals(state, gm));
-    lesson = cleanLesson(mockTeacher(state, dateBefore, dateAfter, order));
     debug.agents.push({ agent: 'Rival Leaders (offline demo)', ms: 0, request: rivalsRequest, response: rivals });
-    debug.agents.push({ agent: 'History Teacher (offline demo)', ms: 0, request: teacherRequest, response: { lesson } });
   }
 
   const rivalResult = applyActions(state, rivals.actions, { source: 'rival_leaders', forbidActor: state.player });
+  state.lastDeltas = computeDeltas(state, before);
+
+  // ---- 4. Advisors (after the rivals, so they see the whole turn) ----
+  const advisors = await briefAdvisors(state, {
+    lang, turn: state.turn, debug, useLLM,
+    lastTurn: {
+      order, headline: gm.headline, feasibility: gm.feasibility, feasibility_reason: gm.feasibility_reason,
+      narrative: gm.narrative.slice(0, 900),
+      reactions: rivals.reactions.map(r => ({ country: r.country, statement: r.statement, intent: r.intent }))
+    }
+  });
+
+  if (useLLM) {
+    const tr = await teacherTask;
+    if (tr.ok) {
+      lesson = cleanLesson(tr.r.json);
+      debug.agents.push({ agent: 'History Teacher', ms: tr.r.ms, request: teacherRequest, response: tr.r.json });
+    } else {
+      lesson = cleanLesson(mockTeacher(state, dateBefore, dateAfter, order));
+      debug.agents.push({ agent: 'History Teacher', error: tr.err.message, request: teacherRequest, fallback: 'offline lesson used' });
+    }
+  } else {
+    lesson = cleanLesson(mockTeacher(state, dateBefore, dateAfter, order));
+    debug.agents.push({ agent: 'History Teacher (offline demo)', ms: 0, request: teacherRequest, response: { lesson } });
+  }
 
   // ---- bookkeeping ----
-  state.lastDeltas = computeDeltas(state, before);
   const entry = {
     turn: state.turn,
     dateBefore: formatDate(dateBefore),
@@ -254,12 +417,14 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
     narrative: gm.narrative,
     advisorNotes: gm.advisor_notes,
     reactions: rivals.reactions,
+    advisors,
     lesson,
     reflection: '',
     deltas: state.lastDeltas[state.player] || {},
     changedTerritories: [...state.lastChangedTerritories]
   };
   state.journal.push(entry);
+  state.advisors = advisors;
   state.turn++;
   state.version++;
   state.gameOver = checkGameOver(state);

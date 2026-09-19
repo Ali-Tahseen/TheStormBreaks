@@ -48,11 +48,15 @@ Backend packages it as JSON: order + world state + real events near this date
         │                    ▼
         │              Game engine validates + applies actions
         ▼
-2. Rival Leaders agent  ┐  run in parallel
-3. History Teacher agent┘  ──► reactions + more actions, lesson (JSON)
+2. Rival Leaders agent ──► reactions + more actions (JSON), applied by the engine
         │
         ▼
-Updated state ──► frontend re-renders map, indicators, log, lesson
+3. Advisors agent ──► briefing from the economic advisor, diplomat and
+        │             military advisor (JSON, advice only, no actions)
+        │
+        │   (4. History Teacher agent ──► lesson (JSON), runs alongside 2 and 3)
+        ▼
+Updated state ──► frontend re-renders map, your nation panel, log, advisors, lesson
 ```
 
 Every scenario is a data file in `server/data/scenarios/` (nations, map, timeline, briefing, suggestions). The engine, agents and offline demo resolve everything through a scenario registry, so adding a campaign is new data, not new code.
@@ -85,13 +89,14 @@ public/
   css/style.css       All styling
   js/app.js           Controller: boot, events, turn flow, modals
   js/map.js           D3 world map (colours, occupation stripes, zoom, labels)
-  js/panels.js        HTML builders for tabs, log, lesson drawer, "Under the hood"
+  js/panels.js        HTML builders for the nation panel, intel card, country report, advisors, log, lesson drawer, "Under the hood"
+  js/portraits.js     Matches leader portraits (img/country_leaders_portraits) to nations
   js/api.js           Fetch wrapper + live-update listener
   vendor/             d3 and topojson-client (bundled, no CDN needed)
   data/world-1939.json  1939 territory map (built by tools/build-map.mjs)
 tools/build-map.mjs   Builds the 1939 map from Natural Earth provinces
 mcp/server.js         Optional MCP server exposing the game as tools
-tests/engine.test.js  Engine tests
+tests/                Engine, advisors and camera tests
 docs/                 Architecture, actions, API, classroom guide, AI handoff notes
 saves/                Autosave and named saves (JSON)
 ```
@@ -115,6 +120,14 @@ With `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` in `.env`, each turn's headl
 Speed is the **Speed** slider in the top bar (next to **Narration on / off**), from 0.5× to 2×. Default is 1.5×. The choice is stored in the browser (`localStorage` key `storm-narration`). It is not set in `.env` and is not sent to ElevenLabs.
 
 **L** toggles narration on and off. Off means no speech request is made.
+
+## Your nation, other nations and your advisors
+
+The panel at the top left shows **only your nation**: a small rectangle with Economy, Military, Politics (stability, war support, army support, citizen support), Diplomacy and Journal tabs. **Details** drops down a full country report over the story log, with your leader's portrait, every indicator with its change last turn and since the start, your territory, and your relations.
+
+Click another country on the map (or in the Diplomacy tab) to see a small **intel card**: leader, faction, relations with you, and a rough intelligence estimate. Exact figures are only shown for your own country.
+
+After every turn your **economic advisor, diplomat and military advisor** write a short briefing: the situation at home, the situation abroad, and one suggestion. Open it from the **Advisors** bar above the order box; **Use as order** copies a suggestion into the order box. The first briefing of each campaign is written by hand for every playable nation; later ones come from the AI (or, offline, from the game data).
 
 ## Campaigns and the after-action report
 

@@ -42,6 +42,8 @@ Some large nations are split into several territories so partial conquests show 
 | `manpower` | 0–60 (millions) | People who could be mobilised |
 | `stability` | 0–100 | Government's grip on power. **0 = game over for the player** |
 | `war_support` | 0–100 | Willingness to fight |
+| `army_support` | 0–100 | Loyalty of the armed forces and officer corps to the government. Low values make mutiny or a coup more likely (narrated by the Game Master; no automatic rule) |
+| `citizen_support` | 0–100 | Ordinary people's approval of the government and its policies (not the same as willingness to fight) |
 
 **Safety limits:** one action can change a 0–100 indicator by at most 30, GDP by at most 20%, and manpower by at most 5 million. Larger requests are cut down to the limit.
 

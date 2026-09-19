@@ -12,83 +12,280 @@ export const warsOf = (state, tag) => state.wars.filter(w => w.includes(tag)).ma
 const relKey = (a, b) => [a, b].sort().join('|');
 export const relation = (state, a, b) => state.relations[relKey(a, b)] ?? 0;
 
-// ---------- nation card ----------
-export function nationCard(state, tag) {
-  const n = state.nations[tag];
+// ---------- shared helpers ----------
+const ROLE_LABELS = { economy: 'Economic advisor', diplomacy: 'Diplomat', military: 'Military advisor' };
+const OUTLOOK_LABELS = { good: 'Good', steady: 'Steady', worrying: 'Worrying', critical: 'Critical' };
+
+const fmtVal = (key, v) => key === 'gdp' ? Math.round(v) : key === 'manpower' ? Number(v).toFixed(1) : Math.round(v);
+const signed = (d) => `${d > 0 ? '+' : d < 0 ? '−' : '±'}${Math.abs(Math.round(d * 10) / 10)}`;
+const deltaHTML = (d, title = 'Change last turn') => d
+  ? `<span class="d ${d > 0 ? 'up' : 'down'}" title="${esc(title)}">${d > 0 ? '▲' : '▼'}${Math.abs(d)}</span>` : '';
+const ordinal = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
+
+export function relationWord(r) {
+  if (r >= 60) return 'Allied';
+  if (r >= 25) return 'Friendly';
+  if (r > -25) return 'Neutral';
+  if (r > -60) return 'Unfriendly';
+  return 'Hostile';
+}
+
+function relBar(r) {
+  const w = Math.abs(r) / 2;
+  const fill = r >= 0
+    ? `<i style="left:50%;width:${w}%;background:var(--gain)"></i>`
+    : `<i style="right:50%;width:${w}%;background:var(--loss)"></i>`;
+  return `<span class="rel" title="${r}">${fill}</span>`;
+}
+
+// Nations worth listing in diplomacy views: majors, plus minors that matter.
+function notableNations(state) {
+  return Object.values(state.nations).filter(n => n.tag !== state.player &&
+    (!n.minor || n.faction || warsOf(state, n.tag).length));
+}
+
+function rankOf(state, key, tag) {
+  const vals = Object.values(state.nations).filter(n => !n.capitulated).map(n => ({ tag: n.tag, v: n.indicators[key] }))
+    .sort((a, b) => b.v - a.v);
+  return vals.findIndex(x => x.tag === tag) + 1;
+}
+
+const territoriesOf = (state, tag) => Object.keys(state.territories).filter(t => state.territories[t].owner === tag);
+
+// ---------- compact panel: your nation ----------
+export function nationCard(state, { dossierOpen = false } = {}) {
+  const n = state.nations[state.player];
   if (!n) return '';
-  const wars = warsOf(state, tag).map(t => state.nations[t]?.name).filter(Boolean);
-  const isPlayer = tag === state.player;
+  const wars = warsOf(state, n.tag).map(t => state.nations[t]?.name).filter(Boolean);
   return `
-    <div class="flag" style="background:${esc(n.color)}"></div>
-    <h2>${esc(n.name)}${isPlayer ? ' <span class="muted" style="font:600 13px var(--ui)">(you)</span>' : ''}</h2>
-    <div class="sub">${esc(n.leader)}, ${esc(n.ideology)}${n.faction ? `, ${esc(n.faction)}` : ''}</div>
-    <div class="wars">${n.capitulated ? 'Defeated' : wars.length ? `At war with ${esc(wars.join(', '))}` : '<span class="muted">At peace</span>'}</div>
-    ${isPlayer ? '' : '<button class="back" data-select="player" type="button">Back to your nation</button>'}`;
+    <span class="flag" style="${swatchStyle(n)}" aria-hidden="true"></span>
+    <div class="nc-main">
+      <h2>${esc(n.name)} <span class="you">(you)</span></h2>
+      <div class="sub">${esc(n.leader)} · ${esc(n.ideology)}${n.faction ? ` · ${esc(n.faction)}` : ''}</div>
+      <div class="wars">${n.capitulated ? 'Defeated' : wars.length ? `At war with ${esc(wars.join(', '))}` : '<span class="muted">At peace</span>'}</div>
+    </div>
+    <button class="btn details-btn" id="btn-dossier" type="button" aria-expanded="${dossierOpen}" aria-controls="dossier"
+      title="Open the full country report">Details <span aria-hidden="true">${dossierOpen ? '▴' : '▾'}</span></button>`;
 }
 
-// ---------- indicator tables ----------
-function tableNations(state, selected) {
-  const list = Object.values(state.nations).filter(n =>
-    !n.minor || n.tag === selected || n.faction || warsOf(state, n.tag).length);
-  list.sort((a, b) => (b.tag === state.player) - (a.tag === state.player) || b.indicators.gdp - a.indicators.gdp);
-  return list;
-}
-
-function cell(state, n, key, def) {
-  const v = n.indicators[key];
+function statTile(state, key, def) {
+  const n = state.nations[state.player];
+  const v = n.indicators[key] ?? 0;
   const d = state.lastDeltas?.[n.tag]?.[key];
-  const shown = key === 'gdp' ? Math.round(v) : key === 'manpower' ? v.toFixed(1) : Math.round(v);
-  const bar = def.max === 100 ? `<span class="bar" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, v))}%"></i></span>` : '';
-  const delta = d ? `<span class="d ${d > 0 ? 'up' : 'down'}" title="Change last turn">${d > 0 ? '▲' : '▼'}${Math.abs(d)}</span>` : '';
-  return `<td>${shown}${def.unit && def.unit !== '' ? `<span class="muted"> ${esc(def.unit)}</span>` : ''}${delta}${bar}</td>`;
+  const pct = def.max === 100;
+  const note = !pct ? `<span class="stat-note">${ordinal(rankOf(state, key, n.tag))} in the world</span>` : '';
+  return `<div class="stat${pct && v < 30 ? ' low' : ''}" title="${esc(def.help)}">
+      <span class="stat-label">${esc(def.label)}</span>
+      <span class="stat-value">${fmtVal(key, v)}${def.unit ? `<small> ${esc(def.unit)}</small>` : ''}${deltaHTML(d)}</span>
+      <span class="stat-foot">${pct ? `<span class="bar" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, v))}%"></i></span>` : note}</span>
+    </div>`;
 }
 
-export function indicatorTab(state, info, tab, selected) {
-  const defs = Object.entries(info.indicators).filter(([, d]) => d.tab === tab);
-  const rows = tableNations(state, selected).map(n => `
-    <tr data-tag="${esc(n.tag)}" class="${n.tag === state.player ? 'is-player' : ''} ${n.tag === selected ? 'is-selected' : ''} ${n.capitulated ? 'is-out' : ''}">
-      <td><span class="nm"><span class="swatch" style="${swatchStyle(n)}"></span>${esc(n.name)}</span>${warsOf(state, n.tag).includes(state.player) ? '<span class="badge" title="At war with you">war</span>' : ''}</td>
-      ${defs.map(([k, d]) => cell(state, n, k, d)).join('')}
-    </tr>`).join('');
-  return `<table class="ind">
-    <thead><tr><th>Nation</th>${defs.map(([, d]) => `<th title="${esc(d.help)}">${esc(d.label)}</th>`).join('')}</tr></thead>
-    <tbody>${rows}</tbody></table>`;
+export function statsTab(state, indicators, tab) {
+  const defs = Object.entries(indicators).filter(([, d]) => d.tab === tab);
+  return `<div class="stats" style="--cols:${defs.length}">${defs.map(([k, d]) => statTile(state, k, d)).join('')}</div>`;
 }
 
-export function diplomacyTab(state, selected) {
+export function diplomacyMini(state) {
   const me = state.player;
-  const rows = tableNations(state, selected).filter(n => n.tag !== me).map(n => {
-    const r = relation(state, me, n.tag);
-    const w = Math.abs(r) / 2;
-    const fill = r >= 0
-      ? `<i style="left:50%;width:${w}%;background:var(--gain)"></i>`
-      : `<i style="right:50%;width:${w}%;background:var(--loss)"></i>`;
-    const war = warsOf(state, n.tag).includes(me);
-    return `<tr data-tag="${esc(n.tag)}" class="${n.tag === selected ? 'is-selected' : ''} ${n.capitulated ? 'is-out' : ''}">
-      <td><span class="nm"><span class="swatch" style="${swatchStyle(n)}"></span>${esc(n.name)}</span></td>
-      <td>${n.faction ? `<span class="badge faction">${esc(n.faction)}</span>` : '<span class="muted">none</span>'}</td>
-      <td><span class="rel" title="${r}">${fill}</span> ${r}</td>
-      <td>${war ? '<span class="badge">at war</span>' : ''}</td></tr>`;
-  }).join('');
-  return `<table class="ind">
-    <thead><tr><th>Nation</th><th title="Alliance bloc">Faction</th><th title="Relations with your nation, from −100 (hostile) to +100 (allied)">Relations with you</th><th></th></tr></thead>
-    <tbody>${rows}</tbody></table>`;
+  const n = state.nations[me];
+  const wars = warsOf(state, me).map(t => state.nations[t]).filter(Boolean);
+  const others = notableNations(state).filter(o => !o.capitulated)
+    .map(o => ({ o, r: relation(state, me, o.tag) }));
+  const best = others.filter(x => x.r > 0).sort((a, b) => b.r - a.r).slice(0, 2);
+  const worst = others.filter(x => x.r < 0 && !wars.includes(x.o)).sort((a, b) => a.r - b.r).slice(0, 2);
+  const chip = ({ o, r }) => `<button type="button" class="nchip" data-select="${esc(o.tag)}" title="${esc(o.name)}: ${esc(relationWord(r))} (${r})">
+      <span class="swatch" style="${swatchStyle(o)}"></span>${esc(o.name)} <b class="${r >= 0 ? 'pos' : 'neg'}">${signed(r)}</b></button>`;
+  const warChips = wars.map(w => `<button type="button" class="nchip war" data-select="${esc(w.tag)}" title="At war with ${esc(w.name)}"><span class="swatch" style="${swatchStyle(w)}"></span>${esc(w.name)}</button>`).join('');
+  return `<dl class="dip-mini">
+      <dt>Status</dt><dd>${n.faction ? `<span class="badge faction">${esc(n.faction)}</span>` : '<span class="muted">No faction</span>'}${wars.length ? `<span class="muted">at war with</span>${warChips}` : '<span class="muted">· at peace</span>'}</dd>
+      <dt>Best</dt><dd>${best.map(chip).join('') || '<span class="muted">No friendly powers yet</span>'}</dd>
+      <dt>Worst</dt><dd>${worst.map(chip).join('') || '<span class="muted">No hostile powers</span>'}</dd>
+    </dl>`;
 }
 
-export function journalTab(state) {
+export function journalMini(state) {
   if (!state.journal.length) {
-    return `<p class="empty">Your decisions and lessons will be collected here, turn by turn. Send your first order below.</p>`;
+    return `<p class="empty">Your decisions and lessons are collected here, turn by turn.</p>`;
   }
   const items = [...state.journal].reverse().map(j => `
-    <li data-turn="${j.turn}" tabindex="0">
-      <div class="when">Turn ${j.turn}, ${esc(j.dateBefore)}${j.reflection ? ', reflection written' : ''}</div>
-      <div class="what">${esc(j.headline)}</div>
-      <div class="muted" style="font-size:13px">${esc(j.order.slice(0, 110))}${j.order.length > 110 ? '…' : ''}</div>
+    <li data-turn="${j.turn}" tabindex="0" title="Open the lesson for this turn">
+      <span class="when">T${j.turn} · ${esc(j.dateBefore)}${j.reflection ? ' · ✎' : ''}</span>
+      <span class="what">${esc(j.headline)}</span>
     </li>`).join('');
-  return `<div class="journal-actions">
-      <a class="btn" href="/api/journal.md" download="leaders-journal.md">Download journal</a>
+  return `<ul class="journal-mini">${items}</ul>
+    <a class="journal-dl" href="/api/journal.md" download="leaders-journal.md">Download journal</a>`;
+}
+
+// ---------- intel card: limited information about another nation ----------
+function estimate(key, v) {
+  if (key === 'gdp') return v >= 600 ? 'Huge' : v >= 250 ? 'Very large' : v >= 100 ? 'Large' : v >= 30 ? 'Medium' : 'Small';
+  if (key === 'stability') return v >= 70 ? 'Stable' : v >= 45 ? 'Steady' : v >= 25 ? 'Shaky' : 'In crisis';
+  return v >= 80 ? 'Formidable' : v >= 60 ? 'Strong' : v >= 40 ? 'Moderate' : v >= 20 ? 'Weak' : 'Negligible';
+}
+
+export function intelCard(state, tag, portrait) {
+  const n = state.nations[tag];
+  if (!n || tag === state.player) return '';
+  const me = state.player;
+  const r = relation(state, me, tag);
+  const atWarWithMe = warsOf(state, tag).includes(me);
+  const held = territoriesOf(state, tag).length;
+  const theirWars = warsOf(state, tag).filter(t => t !== me).map(t => state.nations[t]?.name).filter(Boolean);
+  const I = n.indicators;
+  const est = [['Economy', 'gdp'], ['Army', 'army'], ['Navy', 'navy'], ['Air force', 'air'], ['Government', 'stability']]
+    .map(([label, k]) => `<dt>${label}</dt><dd>${estimate(k, I[k] ?? 0)}</dd>`).join('');
+  return `
+    <button class="close" type="button" data-close-intel aria-label="Close">×</button>
+    <div class="intel-head">
+      ${portrait ? `<img class="intel-portrait" src="${esc(portrait.src)}" alt="Portrait of ${esc(portrait.name)}" loading="lazy">` : ''}
+      <div>
+        <h3><span class="swatch" style="${swatchStyle(n)}"></span>${esc(n.name)}</h3>
+        <div class="sub">${esc(n.leader)} · ${esc(n.ideology)}</div>
+        ${n.faction ? `<span class="badge faction">${esc(n.faction)}</span>` : ''}
+        ${n.capitulated ? '<span class="badge">defeated</span>' : ''}
+      </div>
     </div>
-    <ul class="journal-list">${items}</ul>`;
+    <div class="intel-rel">
+      ${atWarWithMe ? '<b class="war-note">At war with you</b>' : `Relations with you: ${relBar(r)} <b>${signed(r)}</b> <span class="muted">${relationWord(r)}</span>`}
+    </div>
+    <p class="intel-line">${held} ${held === 1 ? 'province' : 'provinces'}${theirWars.length ? ` · at war with ${esc(theirWars.slice(0, 3).join(', '))}${theirWars.length > 3 ? '…' : ''}` : ''}</p>
+    <div class="intel-est-title">Intelligence estimate</div>
+    <dl class="intel-est">${est}</dl>
+    <p class="intel-foot">Exact figures are only known for your own country.</p>`;
+}
+
+// ---------- dossier: the detailed country report (your nation only) ----------
+function indicatorRows(state, indicators, tab, since) {
+  const n = state.nations[state.player];
+  const ini = state.initial?.indicators?.[n.tag] || {};
+  return Object.entries(indicators).filter(([, d]) => d.tab === tab).map(([k, def]) => {
+    const v = n.indicators[k] ?? 0;
+    const ch = typeof ini[k] === 'number' ? Math.round((v - ini[k]) * 10) / 10 : 0;
+    const pct = def.max === 100;
+    const last = state.lastDeltas?.[n.tag]?.[k];
+    return `<li class="${pct && v < 30 ? 'low' : ''}">
+      <div class="ir-top">
+        <b>${esc(def.label)}</b>
+        <span class="ir-val">${fmtVal(k, v)}${def.unit ? `<small> ${esc(def.unit)}</small>` : ''}</span>
+      </div>
+      ${pct ? `<span class="bar wide${v < 30 ? ' low' : ''}" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, v))}%"></i></span>` : ''}
+      <div class="ir-meta">
+        ${pct ? '' : `<span>${ordinal(rankOf(state, k, n.tag))} in the world</span>`}
+        <span>Last turn: ${last ? `<b class="${last > 0 ? 'pos' : 'neg'}">${signed(last)}</b>` : 'no change'}</span>
+        <span>Since ${esc(since)}: ${ch ? `<b class="${ch > 0 ? 'pos' : 'neg'}">${signed(ch)}</b>` : 'no change'}</span>
+      </div>
+      <p class="ir-help">${esc(def.help)}</p>
+    </li>`;
+  }).join('');
+}
+
+export function dossierHTML(state, indicators, portrait) {
+  const me = state.player;
+  const n = state.nations[me];
+  const name = (t) => state.nations[t]?.name || t;
+  const wars = warsOf(state, me).map(name);
+  const held = territoriesOf(state, me);
+  const occupiedHome = held.filter(t => Object.keys(state.territories[t].occupation || {}).length)
+    .map(t => `${esc(t)} <span class="muted">(${Object.entries(state.territories[t].occupation).map(([o, v]) => `${esc(name(o))} ${v}%`).join(', ')})</span>`);
+  const abroad = Object.entries(state.territories).filter(([, t]) => t.owner !== me && t.occupation?.[me])
+    .map(([t, x]) => `${esc(t)} <span class="muted">(${x.occupation[me]}%)</span>`);
+  const rels = notableNations(state).filter(o => !o.capitulated)
+    .map(o => ({ o, r: relation(state, me, o.tag), war: warsOf(state, me).includes(o.tag) }))
+    .sort((a, b) => b.r - a.r);
+  const since = state.events?.[0]?.date ? fmtDate(state.events[0].date) : 'the start';
+  const section = (title, tab) => `
+    <h3>${title}</h3>
+    <ul class="ind-list">${indicatorRows(state, indicators, tab, since)}</ul>`;
+  const portraitBlock = portrait
+    ? `<figure class="portrait">
+        <div class="portrait-frame"><img src="${esc(portrait.src)}" alt="Portrait of ${esc(portrait.name)}"></div>
+        <figcaption><b>${esc(portrait.name)}</b>${esc(portrait.role)}${portrait.headOfState ? `<em>Head of state. Head of government: ${esc(n.leader)}</em>` : ''}</figcaption>
+      </figure>`
+    : `<figure class="portrait">
+        <div class="portrait-frame empty"><span class="flag-big" style="${swatchStyle(n)}"></span></div>
+        <figcaption><b>${esc(n.leader)}</b>No portrait available</figcaption>
+      </figure>`;
+  return `
+    <div class="dossier-inner">
+      <button class="close" type="button" data-close-dossier aria-label="Close the country report">×</button>
+      <header class="dossier-head">
+        ${portraitBlock}
+        <div class="dossier-id">
+          <div class="kicker">Country report · ${esc(fmtDate(state.date))}</div>
+          <h2><span class="swatch" style="${swatchStyle(n)}"></span>${esc(n.name)}</h2>
+          <dl class="facts">
+            <dt>Leader</dt><dd>${esc(n.leader)}</dd>
+            <dt>Government</dt><dd>${esc(n.ideology)}</dd>
+            <dt>Faction</dt><dd>${n.faction ? esc(n.faction) : '<span class="muted">None</span>'}</dd>
+            <dt>Status</dt><dd class="${wars.length ? 'neg' : ''}">${n.capitulated ? 'Defeated' : wars.length ? `At war with ${esc(wars.join(', '))}` : 'At peace'}</dd>
+            <dt>Territory</dt><dd>${held.length} ${held.length === 1 ? 'province' : 'provinces'}</dd>
+          </dl>
+        </div>
+      </header>
+      ${section('Economy', 'economy')}
+      ${section('Military', 'military')}
+      ${section('Politics', 'politics')}
+      <h3>Territory</h3>
+      <dl class="terr">
+        <dt>Provinces held</dt><dd>${held.map(esc).join(', ') || '<span class="muted">None</span>'}</dd>
+        <dt>Enemy forces inside your borders</dt><dd>${occupiedHome.join('; ') || '<span class="muted">None</span>'}</dd>
+        <dt>Your forces abroad</dt><dd>${abroad.join('; ') || '<span class="muted">None</span>'}</dd>
+      </dl>
+      <h3>Diplomacy</h3>
+      <table class="dossier-rel">
+        <thead><tr><th>Nation</th><th>Faction</th><th>Relations with you</th></tr></thead>
+        <tbody>${rels.map(({ o, r, war }) => `
+          <tr data-select="${esc(o.tag)}" tabindex="0">
+            <td><span class="nm"><span class="swatch" style="${swatchStyle(o)}"></span>${esc(o.name)}</span></td>
+            <td>${o.faction ? `<span class="badge faction">${esc(o.faction)}</span>` : '<span class="muted">–</span>'}</td>
+            <td>${war ? '<span class="badge">at war</span>' : `${relBar(r)} <b class="${r >= 0 ? 'pos' : 'neg'}">${signed(r)}</b> <span class="muted">${relationWord(r)}</span>`}</td>
+          </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+// ---------- advisors ----------
+// The bar under the log: one button per advisor (with an outlook dot) that
+// opens that advisor's note, plus a toggle for the whole briefing.
+export function advisorBarHTML(state, { open = false, role = null, unseen = false } = {}) {
+  const a = state.advisors;
+  const roles = Object.keys(ROLE_LABELS).map(r => {
+    const o = a?.[r]?.outlook || 'steady';
+    const on = open && role === r;
+    return `<button type="button" class="adv-dot ${esc(o)}" data-adv-role="${r}" aria-pressed="${on}" ${a ? '' : 'disabled'}
+      title="${esc(ROLE_LABELS[r])}: outlook ${esc((OUTLOOK_LABELS[o] || o).toLowerCase())}"><i></i>${esc(ROLE_LABELS[r].split(' ')[0])}</button>`;
+  }).join('');
+  return `<div class="advisor-toggle${open ? ' open' : ''}">
+      <button type="button" id="btn-advisors" class="adv-title" aria-expanded="${open}" aria-controls="advisors" ${a ? '' : 'disabled'}>
+        Advisors${unseen ? '<span class="new-badge">new</span>' : ''} <span class="caret" aria-hidden="true">${open ? '▾' : '▴'}</span>
+      </button>
+      <span class="adv-dots">${roles}</span>
+    </div>`;
+}
+
+export function advisorsHTML(state, role = 'economy') {
+  const a = state.advisors;
+  if (!a) return '<p class="empty">Your advisors will brief you after your next order.</p>';
+  const when = a.turn ? `after turn ${a.turn}` : 'before your first order';
+  const x = a[role] || a.economy;
+  const tabs = Object.keys(ROLE_LABELS).map(r => `
+    <button type="button" role="tab" data-adv-role="${r}" aria-selected="${r === role}" class="${esc(a[r]?.outlook || 'steady')}"><i></i>${esc(ROLE_LABELS[r])}</button>`).join('');
+  return `<div class="adv-inner">
+      <div class="adv-head">
+        <div><b>Advisors’ briefing</b> <span class="muted">${esc(a.date)} · ${esc(when)}</span></div>
+        <button class="close" type="button" data-close-advisors aria-label="Close the briefing">×</button>
+      </div>
+      <div class="adv-tabs" role="tablist">${tabs}</div>
+      <article class="adv-card ${esc(x.outlook)}" role="tabpanel">
+        <header><b>${esc(ROLE_LABELS[role])}</b><span class="outlook ${esc(x.outlook)}">${esc(OUTLOOK_LABELS[x.outlook] || x.outlook)}</span></header>
+        <p><span class="lbl">At home</span>${esc(x.home)}</p>
+        <p><span class="lbl">Abroad</span>${esc(x.abroad)}</p>
+        <p class="advice"><span class="lbl">Suggests</span>${esc(x.advice)}
+          <button type="button" class="use-advice" data-advice="${esc(x.advice)}" title="Copy this suggestion into your orders">Use as order</button></p>
+      </article>
+      <p class="adv-foot">Advisors only advise: their suggestions are not orders, and they can be wrong.${a.source === 'offline' ? ' (Offline demo briefing.)' : ''}</p>
+    </div>`;
 }
 
 // ---------- orders log ----------

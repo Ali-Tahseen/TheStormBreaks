@@ -38,9 +38,9 @@
     </div>
   </header>
 
-  <!-- Left rail: indicators (top) and orders (bottom) -->
+  <!-- Left rail: your nation at a glance (top) and orders (bottom) -->
   <aside class="rail">
-    <section class="panel ledger" aria-label="Nation indicators">
+    <section class="panel ledger" aria-label="Your nation">
       <div id="nation-card" class="nation-card"></div>
       <div class="tabs" role="tablist">
         <button role="tab" data-tab="economy" aria-selected="true">Economy</button>
@@ -53,7 +53,14 @@
     </section>
 
     <section class="panel orders" aria-label="Orders">
-      <div id="log" class="log" aria-live="polite"></div>
+      <div class="log-wrap">
+        <div id="log" class="log" aria-live="polite"></div>
+        <!-- Drop-down country report (opened from "Details" above) -->
+        <div id="dossier" class="dossier" role="region" aria-label="Country report" hidden></div>
+        <!-- Advisors' briefing (opened from the bar below) -->
+        <div id="advisors" class="advisors-pop" role="region" aria-label="Advisors' briefing" hidden></div>
+      </div>
+      <div id="advisor-bar" class="advisor-bar"></div>
       <form id="order-form" class="order-form" autocomplete="off">
         <label for="order" id="order-label" class="order-label">Your orders</label>
         <textarea id="order" rows="3" maxlength="1200" placeholder="Describe what your nation does next…"></textarea>
@@ -64,6 +71,9 @@
       </form>
     </section>
   </aside>
+
+  <!-- Limited information about another nation, shown when you click it -->
+  <aside id="intel" class="panel intel" aria-label="Selected nation" hidden></aside>
 
   <!-- Milestones of this campaign -->
   <div class="strip" aria-label="Campaign milestones">

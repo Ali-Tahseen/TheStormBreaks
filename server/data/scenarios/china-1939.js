@@ -10,6 +10,7 @@
 
 import { SCENARIO as WW2 } from './ww2-1939.js';
 import { TIMELINE } from '../timelines/china-1939.js';
+import { OPENING_ADVICE } from '../advisors/china-1939.js';
 
 export const SCENARIO = {
   id: 'china-1939',
@@ -32,6 +33,8 @@ export const SCENARIO = {
   rivalGuidance: 'e.g. Japan presses for a quick victory and punishes guerrilla areas; the USA and Britain give aid to China but put Europe first; the Soviet Union avoids a two-front war; the CCP and Nationalists cooperate uneasily while preparing for the post-war struggle',
   teacherContext: 'preparing for HKDSE, IGCSE or AP history, with an emphasis on China’s War of Resistance and the Japanese occupation of Hong Kong',
   timeline: TIMELINE,
+  // What each playable nation's advisors say before the first order.
+  openingAdvice: OPENING_ADVICE,
 
   briefing: [
     {
@@ -79,14 +82,14 @@ export const SCENARIO = {
     CHN: {
       name: 'Republic of China', leader: 'Chiang Kai-shek', ideology: 'Nationalist one-party state',
       faction: null, color: '#e0a15a', home: 'Southwest China', playable: true,
-      indicators: { gdp: 180, industry: 12, resources: 45, army: 55, navy: 3, air: 8, manpower: 35, stability: 30, war_support: 80 }
+      indicators: { gdp: 180, industry: 12, resources: 45, army: 55, navy: 3, air: 8, manpower: 35, stability: 30, war_support: 80, army_support: 50, citizen_support: 55 }
     },
     // The Chinese Communist Party: small, disciplined, guerrilla-based, and
     // officially allied with the Nationalists through the United Front.
     CCP: {
       name: 'Chinese Communist Party', leader: 'Mao Zedong', ideology: 'Communist movement',
       faction: 'United Front', color: '#c0392b', home: 'Northwest China', playable: true,
-      indicators: { gdp: 25, industry: 5, resources: 25, army: 25, navy: 0, air: 0, manpower: 8, stability: 55, war_support: 90 }
+      indicators: { gdp: 25, industry: 5, resources: 25, army: 25, navy: 0, air: 0, manpower: 8, stability: 55, war_support: 90, army_support: 90, citizen_support: 70 }
     }
   },
 

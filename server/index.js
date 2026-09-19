@@ -8,8 +8,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createGame, applyActions, ACTION_TYPES, formatDate, checkGameOver } from './engine.js';
-import { runTurn, generateReport } from './agents.js';
+import { createGame, applyActions, ACTION_TYPES, formatDate, checkGameOver, migrateState } from './engine.js';
+import { runTurn, generateReport, openingBriefing, offlineBriefing } from './agents.js';
 import { llmInfo } from './llm.js';
 import { audioInfo, streamClip } from './audio.js';
 import { getScenario, listScenarios, scenarioSummary, DEFAULT_SCENARIO_ID } from './data/scenarios/index.js';
@@ -44,6 +44,8 @@ function save(file = AUTOSAVE) {
 function loadFile(file) {
   const data = JSON.parse(fs.readFileSync(file, 'utf8'));
   if (!data?.nations || !data?.territories) throw new Error('not a valid save file');
+  migrateState(data);
+  if (!data.advisors) data.advisors = offlineBriefing(data);
   return data;
 }
 try { if (fs.existsSync(AUTOSAVE)) game = loadFile(AUTOSAVE); } catch { game = null; }
@@ -122,6 +124,7 @@ app.post('/api/new', (req, res) => {
   const scenario = getScenario(scenarioId);
   game = createGame({ scenarioId: scenario.id, player, studentName, realism }, mapNamesFor(scenario.mapFile));
   game.lang = ['en', 'zh-Hant', 'zh-Hans'].includes(lang) ? lang : 'en';
+  game.advisors = openingBriefing(game);
   save(); broadcast();
   res.json(publicState(game));
 });
@@ -282,7 +285,15 @@ app.get('/api/journal.md', (req, res) => {
     lines.push(`## Turn ${j.turn}: ${j.dateBefore} → ${j.dateAfter}`, '');
     lines.push(`**My order:** ${j.order}`, '');
     lines.push(`**Outcome (${j.feasibility}):** ${j.headline}`, '', j.narrative, '');
-    if (j.advisorNotes?.length) lines.push('**Advisor notes:**', ...j.advisorNotes.map(a => `- ${a}`), '');
+    if (j.advisorNotes?.length) lines.push('**Effects this turn:**', ...j.advisorNotes.map(a => `- ${a}`), '');
+    if (j.advisors) {
+      lines.push(`**Advisors' briefing (${j.advisors.date}):**`);
+      for (const [role, label] of [['economy', 'Economic advisor'], ['diplomacy', 'Diplomat'], ['military', 'Military advisor']]) {
+        const a = j.advisors[role];
+        if (a) lines.push(`- *${label}* (${a.outlook}): At home: ${a.home} Abroad: ${a.abroad} Suggests: ${a.advice}`);
+      }
+      lines.push('');
+    }
     if (j.lesson) {
       lines.push(`**Real history — ${j.lesson.title}:** ${j.lesson.what_really_happened}`, '');
       if (j.lesson.how_your_timeline_differs) lines.push(`**How my timeline differs:** ${j.lesson.how_your_timeline_differs}`, '');

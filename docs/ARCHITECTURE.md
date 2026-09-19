@@ -18,11 +18,11 @@
    `world` comes from `summarizeForLLM()`: date, player, relevant nations with indicators and wars, the player's relations, **every territory with its owner** (so the model knows valid names), and the last 4 turns.
 3. Call the model with the Game Master system prompt → `cleanGM()` normalises the JSON (defaults, length limits, time skip clamped to 1–6 months).
 4. `applyActions(..., {source: 'game_master'})`, then `advanceTime()`.
-5. In parallel:
-   - **Rival Leaders** get what just happened plus a shorter world summary → reactions and actions. Applied with `forbidActor: player`.
-   - **History Teacher** gets the period, the order, the outcome and the real events in that period → the lesson.
-   If either fails, the turn still completes (the offline lesson is used as a fallback).
-6. Compute deltas, append the journal entry, increment turn and version, check for game over (player stability 0, player defeated, or September 1945).
+5. The **History Teacher** starts at once (it only needs the outcome: the period, the order and the real events in that period → the lesson). Meanwhile, in sequence:
+   - **Rival Leaders** get what just happened plus a shorter world summary → reactions and actions. Applied with `forbidActor: player`, then deltas are computed.
+   - **Advisors** (`briefAdvisors`) get the player's indicators and last-turn changes, wars, occupation at home and abroad, relations, the last turn (order, outcome, rival reactions) and the real events of the last few months → a briefing from the economic advisor, the diplomat and the military advisor. Each gives an `outlook` (`good|steady|worrying|critical`) plus one line on the situation at home, one abroad and one suggestion. Advisors emit **no actions**; `cleanAdvisors()` keeps only those four fields per advisor.
+   If the rivals, the teacher or the advisors fail, the turn still completes (offline lesson / offline briefing as fallbacks).
+6. Append the journal entry (with `advisors`), set `state.advisors`, increment turn and version, check for game over (player stability 0, player defeated, or September 1945).
 7. `server/index.js` autosaves and broadcasts a live-update event.
 
 If step 3 fails (network, bad key, invalid JSON twice), the server restores the pre-turn state and returns a 502 with the reason.
@@ -33,7 +33,7 @@ All prompts are in `server/agents.js` and are built from the active scenario:
 
 - `actionSpec(scenario)`: the action list the models see. Built from `scenario.indicators` and `scenario.factions`, so new indicators or factions appear automatically.
 - `SAFETY`: audience rules for students aged 12–18. Atrocities are never playable; the Holocaust is taught accurately; leader dialogue is labelled in-game and never passed off as real quotations.
-- `gameMasterSystem()`, `rivalsSystem()`, `teacherSystem()`: one per agent. Each takes scenario text (era, setting, rival guidance, teacher context, timeline). Each ends with the exact JSON shape expected.
+- `gameMasterSystem()`, `rivalsSystem()`, `teacherSystem()`, `advisorsSystem()`: one per agent. Each takes scenario text (era, setting, rival guidance, teacher context, timeline). Each ends with the exact JSON shape expected.
 - `reportSystem(scenario)`: the end-of-campaign examiner.
 
 ## The after-action report
@@ -51,7 +51,8 @@ DeepSeek JSON mode requires the word "json" in the prompt and `response_format: 
 
 ## Frontend
 
-- `app.js` holds the app state (`info`, `state`, `selected`, `tab`, `busy`) and calls render functions after each change. There is no framework; rendering is `innerHTML` from the pure builders in `panels.js`, with all text escaped by `esc()`.
+- `app.js` holds the app state (`info`, `state`, `selected`, `tab`, `busy`, `dossierOpen`, `advisorsOpen`, `advisorRole`) and calls render functions after each change.
+- The left rail: a **compact panel** (your nation only: header, Economy/Military/Politics/Diplomacy/Journal tabs with stat tiles), the orders log with two overlays inside `.log-wrap` (the **country report** that drops down from *Details*, and the **advisors' briefing** that rises from the advisor bar), then the order box. Clicking another nation (map or chips) opens the **intel card** with limited, qualitative information. Leader portraits are matched in `portraits.js` by the nation's current leader. There is no framework; rendering is `innerHTML` from the pure builders in `panels.js`, with all text escaped by `esc()`.
 - `map.js` (`WorldMap`) draws once on load and on resize, then `render(state)` restyles fills, redraws occupation stripes (SVG patterns per occupier and 25% band), nation borders (a TopoJSON mesh between shapes with different owners), the selected nation's outline, and labels. Labels hide or show depending on zoom level.
 - Live updates: `api.listen()` opens `/api/events`. When the server's version differs from the local one, the app refetches state. Changes from MCP or another tab show up immediately.
 - The one deliberate animation: after a turn the date rolls month by month, then the changed territories pulse. `prefers-reduced-motion` turns both off.

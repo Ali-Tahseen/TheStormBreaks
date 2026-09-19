@@ -54,7 +54,8 @@ Values: `scenarioId` is `ww2-1939` or `china-1939`; `player` is a tag (`GER`, `C
       "faction": "Axis", "color": "#6e7479", "home": "Germany",
       "minor": false, "playable": true, "capitulated": false,
       "indicators": { "gdp": 412, "industry": 85, "resources": 40, "army": 85, "navy": 35,
-                      "air": 80, "manpower": 10, "stability": 75, "war_support": 60 }
+                      "air": 80, "manpower": 10, "stability": 75, "war_support": 60,
+                      "army_support": 70, "citizen_support": 70 }
     }
     // ... every nation, including auto-generated minors
   },
@@ -67,6 +68,12 @@ Values: `scenarioId` is `ww2-1939` or `china-1939`; `player` is a tag (`GER`, `C
   "events": [ { "turn": 0, "date": {...}, "title": "...", "description": "...", "category": "war", "territories": ["Poland"] } ],
   "journal": [ /* one entry per turn, see below */ ],
   "lastDeltas": { "GER": { "industry": 5 } },   // indicator changes during the last turn
+  "advisors": {                        // latest advisors' briefing (turn 0 = opening briefing)
+    "turn": 1, "date": "October 1939", "source": "llm | offline | opening",
+    "economy":   { "outlook": "good | steady | worrying | critical", "home": "...", "abroad": "...", "advice": "..." },
+    "diplomacy": { "outlook": "...", "home": "...", "abroad": "...", "advice": "..." },
+    "military":  { "outlook": "...", "home": "...", "abroad": "...", "advice": "..." }
+  },
   "lastChangedTerritories": ["Canada"],
   "initial": { /* compact snapshot of the starting position, used by the report */ },
   "report": null,                      // the after-action report once generated
@@ -122,8 +129,9 @@ Returned by `POST /api/report` and stored on the state as `report`. The `metrics
   "feasibilityReason": "...",
   "headline": "...",
   "narrative": "...",
-  "advisorNotes": ["+ Industry: ...", "- Stability: ..."],
+  "advisorNotes": ["+ Industry: ...", "- Stability: ..."],   // the Game Master's short effect notes
   "reactions": [ { "country": "UK", "leader": "...", "statement": "...", "intent": "..." } ],
+  "advisors": { /* the briefing written after this turn, same shape as state.advisors */ },
   "lesson": {
     "title": "...", "what_really_happened": "...", "how_your_timeline_differs": "...",
     "why_it_matters": "...", "key_terms": [ { "term": "...", "definition": "..." } ],

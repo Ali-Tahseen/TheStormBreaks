@@ -117,6 +117,7 @@ export function createGame(opts = {}, mapNames = []) {
     lastDeltas: {},
     lastChangedTerritories: [],
     lastTurnDebug: null,
+    advisors: null,
     report: null,
     gameOver: null
   };
@@ -139,6 +140,31 @@ export function snapshotInitial(state) {
     wars: state.wars.map(w => [...w]),
     relations: { ...state.relations }
   };
+}
+
+// Bring an older saved game up to date with the current scenario definition,
+// e.g. indicators added after the save was made (army_support, citizen_support).
+// Missing values come from the scenario's starting value for that nation, or
+// the scenario's minor-nation defaults. Returns the list of fixes applied.
+export function migrateState(state) {
+  const fixes = [];
+  if (!state?.nations) return fixes;
+  const scenario = getScenario(state.scenarioId);
+  const keys = Object.keys(scenario.indicators);
+  const startValue = (tag, k) => scenario.nations[tag]?.indicators?.[k] ?? scenario.minorIndicators?.[k] ?? 50;
+  for (const [tag, n] of Object.entries(state.nations)) {
+    n.indicators ||= {};
+    for (const k of keys) {
+      if (typeof n.indicators[k] !== 'number') {
+        n.indicators[k] = startValue(tag, k);
+        fixes.push(`${tag}.${k}`);
+      }
+      const ini = state.initial?.indicators?.[tag];
+      if (ini && typeof ini[k] !== 'number') ini[k] = startValue(tag, k);
+    }
+  }
+  if (!('advisors' in state)) state.advisors = null;
+  return fixes;
 }
 
 // ---------- name resolution ----------

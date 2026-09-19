@@ -7,7 +7,7 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "mcp": "node mcp/server.js",
-    "test": "node tests/engine.test.js && node tests/camera.test.js",
+    "test": "node tests/engine.test.js && node tests/advisors.test.js && node tests/camera.test.js",
     "test-tts": "node tools/test-tts.mjs",
     "generate-audio": "node tools/generate-audio.mjs",
     "build-map": "node tools/build-map.mjs"

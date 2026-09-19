@@ -5,13 +5,17 @@ import { WorldMap } from './map.js';
 import { applyInitialCamera } from './camera.js';
 import { swatchStyle } from './flags.js';
 import { AudioEngine } from './audio.js';
+import { portraitFor } from './portraits.js';
 import {
-  esc, fmtDate, nationCard, indicatorTab, diplomacyTab, journalTab, warsOf,
-  logHTML, lessonHTML, hoodHTML, reportHTML
+  esc, fmtDate, nationCard, statsTab, diplomacyMini, journalMini, intelCard, dossierHTML,
+  advisorBarHTML, advisorsHTML, warsOf, logHTML, lessonHTML, hoodHTML, reportHTML
 } from './panels.js';
 
 const $ = (sel) => document.querySelector(sel);
-const app = { info: null, state: null, selected: null, tab: 'economy', busy: false, map: null, lessonTurn: null };
+const app = {
+  info: null, state: null, selected: null, tab: 'economy', busy: false, map: null, lessonTurn: null,
+  dossierOpen: false, advisorsOpen: false, advisorsSeen: null, advisorRole: 'economy'
+};
 const audio = new AudioEngine({
   onChange: () => {
     syncNarrationButtons();
@@ -140,6 +144,9 @@ function renderAll({ changed = [] } = {}) {
   $('#order-label').textContent = `Orders for ${s.nations[s.player].name}`;
   renderLedger();
   renderLog();
+  renderAdvisors();
+  renderIntel();
+  if (app.dossierOpen) renderDossier();
   renderSuggestions();
   renderMilestones();
   app.map.render(s, { selected: app.selected, changed });
@@ -147,17 +154,72 @@ function renderAll({ changed = [] } = {}) {
   $('#btn-finish').disabled = !s || !!s.gameOver;
 }
 
+function indicatorDefs() {
+  const sc = activeScenario();
+  return (sc.indicators ? sc : app.info).indicators || {};
+}
+
+// The compact panel always shows YOUR nation. Other nations appear in the
+// intel card (renderIntel) when selected.
 function renderLedger() {
   const s = app.state;
-  const sc = activeScenario();
-  const indInfo = sc.indicators ? sc : app.info;
-  $('#nation-card').innerHTML = nationCard(s, app.selected || s.player);
+  $('#nation-card').innerHTML = nationCard(s, { dossierOpen: app.dossierOpen });
   document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === app.tab)));
   let html;
-  if (app.tab === 'diplomacy') html = diplomacyTab(s, app.selected);
-  else if (app.tab === 'journal') html = journalTab(s);
-  else html = indicatorTab(s, indInfo, app.tab, app.selected);
+  if (app.tab === 'diplomacy') html = diplomacyMini(s);
+  else if (app.tab === 'journal') html = journalMini(s);
+  else html = statsTab(s, indicatorDefs(), app.tab);
   $('#tab-body').innerHTML = html;
+}
+
+// ---------------- intel card (another nation, limited information) ----------------
+function renderIntel() {
+  const s = app.state;
+  const box = $('#intel');
+  const tag = app.selected;
+  if (!s || !tag || tag === s.player || !s.nations[tag]) { box.hidden = true; box.innerHTML = ''; return; }
+  box.innerHTML = intelCard(s, tag, portraitFor(s.nations[tag]));
+  box.hidden = false;
+}
+
+// ---------------- country report (drop-down over the log) ----------------
+function renderDossier() {
+  const s = app.state;
+  $('#dossier').innerHTML = dossierHTML(s, indicatorDefs(), portraitFor(s.nations[s.player]));
+}
+function setDossier(open) {
+  app.dossierOpen = Boolean(open) && Boolean(app.state);
+  if (app.dossierOpen) { setAdvisors(false); renderDossier(); }
+  const box = $('#dossier');
+  box.hidden = !app.dossierOpen;
+  box.classList.toggle('open', app.dossierOpen);
+  $('#nation-card').innerHTML = app.state ? nationCard(app.state, { dossierOpen: app.dossierOpen }) : '';
+  if (app.dossierOpen) {
+    box.scrollTop = 0;
+    // On phones the rail is a scrolling bottom sheet: bring the report into view.
+    if (innerWidth <= 900) $('.log-wrap').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+}
+
+// ---------------- advisors (drop-up from the bar above the orders box) ----------------
+const advisorsKey = (s) => s?.advisors ? `${s.id}:${s.advisors.turn}:${s.advisors.date}` : null;
+function renderAdvisors() {
+  const s = app.state;
+  const unseen = Boolean(s?.advisors) && advisorsKey(s) !== app.advisorsSeen && !app.advisorsOpen;
+  $('#advisor-bar').innerHTML = s ? advisorBarHTML(s, { open: app.advisorsOpen, role: app.advisorRole, unseen }) : '';
+  if (app.advisorsOpen) $('#advisors').innerHTML = advisorsHTML(s, app.advisorRole);
+}
+function setAdvisors(open, role) {
+  if (role) app.advisorRole = role;
+  app.advisorsOpen = Boolean(open) && Boolean(app.state?.advisors);
+  if (app.advisorsOpen) {
+    if (app.dossierOpen) setDossier(false);
+    app.advisorsSeen = advisorsKey(app.state);
+  }
+  const box = $('#advisors');
+  box.hidden = !app.advisorsOpen;
+  box.classList.toggle('open', app.advisorsOpen);
+  renderAdvisors();
 }
 
 function renderLog() {
@@ -298,8 +360,8 @@ function showTooltip(name, e) {
 }
 
 function select(tag) {
-  app.selected = tag || app.state.player;
-  renderLedger();
+  app.selected = tag && app.state.nations[tag] ? tag : app.state.player;
+  renderIntel();
   app.map.render(app.state, { selected: app.selected });
 }
 
@@ -487,6 +549,8 @@ async function startGame(form) {
     $('#start').hidden = true;
     $('#ending').hidden = true;
     closeLesson();
+    setDossier(false);
+    setAdvisors(false);
     renderAll();
     syncMusic();
     applyInitialCamera(app.map, app.state, { defaultView: sc.defaultView || 'world' });
@@ -561,11 +625,40 @@ function wireUI() {
     if (b) { app.tab = b.dataset.tab; renderLedger(); }
   });
   $('.ledger').addEventListener('click', (e) => {
-    const row = e.target.closest('tr[data-tag]');
-    if (row) return select(row.dataset.tag);
-    if (e.target.closest('[data-select="player"]')) return select(app.state.player);
+    if (e.target.closest('#btn-dossier')) return setDossier(!app.dossierOpen);
+    const sel = e.target.closest('[data-select]');
+    if (sel) return select(sel.dataset.select);
     const j = e.target.closest('li[data-turn]');
     if (j) openLesson(Number(j.dataset.turn));
+  });
+  $('#dossier').addEventListener('click', (e) => {
+    if (e.target.closest('[data-close-dossier]')) return setDossier(false);
+    const row = e.target.closest('[data-select]');
+    if (row) select(row.dataset.select);
+  });
+  $('#dossier').addEventListener('keydown', (e) => {
+    const row = e.target.closest('[data-select]');
+    if (row && e.key === 'Enter') select(row.dataset.select);
+  });
+  $('#advisor-bar').addEventListener('click', (e) => {
+    const r = e.target.closest('[data-adv-role]');
+    if (r) return setAdvisors(!(app.advisorsOpen && app.advisorRole === r.dataset.advRole), r.dataset.advRole);
+    if (e.target.closest('#btn-advisors')) setAdvisors(!app.advisorsOpen);
+  });
+  $('#advisors').addEventListener('click', (e) => {
+    if (e.target.closest('[data-close-advisors]')) return setAdvisors(false);
+    const r = e.target.closest('[data-adv-role]');
+    if (r) return setAdvisors(true, r.dataset.advRole);
+    const use = e.target.closest('[data-advice]');
+    if (use) {
+      const ta = $('#order');
+      ta.value = use.dataset.advice;
+      setAdvisors(false);
+      ta.focus();
+    }
+  });
+  $('#intel').addEventListener('click', (e) => {
+    if (e.target.closest('[data-close-intel]')) select(app.state.player);
   });
   $('.ledger').addEventListener('keydown', (e) => {
     const j = e.target.closest('li[data-turn]');
@@ -633,6 +726,8 @@ function wireUI() {
       try {
         app.state = await api.load(load.dataset.load);
         app.selected = app.state.player;
+        setDossier(false);
+        setAdvisors(false);
         audio.stop();
         $('#start').hidden = true;
         renderAll();
@@ -670,6 +765,9 @@ function wireUI() {
     if (e.key === 'Escape') {
       if (!$('#hood').hidden) $('#hood').hidden = true;
       else if (!$('#start').hidden && app.state) $('#start').hidden = true;
+      else if (app.advisorsOpen) setAdvisors(false);
+      else if (app.dossierOpen) setDossier(false);
+      else if (app.state && app.selected && app.selected !== app.state.player) select(app.state.player);
       else if ($('#drawer').classList.contains('open')) closeLesson();
       return;
     }

@@ -29,7 +29,8 @@ Stack: Node.js ≥ 18.17 (ES modules), Express 5, dotenv, vanilla JS frontend wi
 | `server/agents.js` | Scenario-parameterised prompts (`actionSpec`, `SAFETY`, three turn agents, report agent), JSON cleaners, `runTurn`, `generateReport` |
 | `server/report.js` | `computeMetrics` (deterministic) and `scoreFromGrades` (fixed weights, reproducible overall score) |
 | `server/llm.js` | `chatJSON(system, user)`: OpenAI-compatible call, JSON mode, loose parsing, one retry, timeout. Config from env |
-| `server/mock.js` | Keyword-based stand-ins for the turn agents + `mockReport` |
+| `server/mock.js` | Keyword-based stand-ins for the turn agents + `mockReport` + `mockAdvisors` (opening briefing from the scenario, then a data-driven briefing) |
+| `server/data/advisors/*.js` | Hand-written opening briefings (economic advisor, diplomat, military advisor) for every playable nation, per campaign |
 | `server/data/scenarios/index.js` | Scenario registry: `SCENARIOS`, `getScenario`, `listScenarios`, `scenarioSummary` |
 | `server/data/scenarios/ww2-1939.js` | WWII campaign data: dates, briefing, `indicators`, `factions`, `nations`, `territoryOwners`, `start*`, aliases, suggestions, timeline |
 | `server/data/scenarios/china-1939.js` | China's War of Resistance campaign (spreads the WWII data and overrides China/CCP) |
@@ -37,19 +38,25 @@ Stack: Node.js ≥ 18.17 (ES modules), Express 5, dotenv, vanilla JS frontend wi
 | `server/data/timeline.js` | Generic `eventsBetween(timeline, …)` / `eventsNear(timeline, …)` |
 | `public/js/app.js` | Boot, event wiring, scenario picker, `sendOrder` turn flow, date roll animation, start/hood/ending modals, report screen, lesson drawer |
 | `public/js/map.js` | `WorldMap`: projection, fills, occupation patterns, borders mesh, labels, zoom/views (incl. China)/focus, pulse |
-| `public/js/panels.js` | Pure HTML builders: nation card, indicator/diplomacy/journal tabs, log, lesson, hood, after-action report |
+| `public/js/panels.js` | Pure HTML builders: compact nation panel (stat tiles, diplomacy summary, journal), intel card, country report (dossier), advisors bar + briefing, log, lesson, hood, after-action report |
+| `public/js/portraits.js` | `portraitFor(nation)`: matches `public/img/country_leaders_portraits/*.jpg` to the nation's current leader (head-of-state fallback for France under Daladier/Reynaud and Bulgaria) |
 | `public/js/api.js` | Fetch wrapper; `listen()` for SSE |
 | `tools/build-map.mjs` | Builds `public/data/world-1939.json`: groups Natural Earth provinces into 1939 territories and cuts along historical border lines (`CLIPS`) |
 | `mcp/server.js` | MCP tools that call the REST API on `GAME_URL` |
 | `tests/engine.test.js` | Engine tests (`npm test`) |
+| `tests/advisors.test.js` | New indicators, save migration, opening briefings, advisors offline and via a fake local LLM server |
 
 Data contracts are in `docs/API.md` (state and journal shapes) and `docs/ACTIONS.md` (actions).
 
 ## How to do common tasks
 
-**Add an indicator** (e.g. `inflation`): add it to `INDICATORS` in `scenario1939.js` with a `tab`; add a starting value to every nation in `NATIONS` and to the minor-nation default in `createGame()`. It appears in the tab, the prompts and validation automatically.
+**Add an indicator** (e.g. `inflation`): add it to `indicators` in `server/data/scenarios/ww2-1939.js` with a `tab`; add a starting value to every nation in `nations` (both campaigns) and to `minorIndicators`. It appears in the compact panel, the country report, the prompts and validation automatically, and `migrateState()` fills it into older saves. `tests/advisors.test.js` checks every nation has it (see how `army_support` / `citizen_support` were added).
 
-**Add a tab**: add a button in `index.html` (`data-tab`), give indicators that `tab` value, or add a custom builder in `panels.js` and a branch in `renderLedger()`.
+**Add a tab**: add a button in `index.html` (`data-tab`), give indicators that `tab` value, or add a custom builder in `panels.js` and a branch in `renderLedger()`. Keep the compact panel small: its body has a fixed height (`.tab-body`).
+
+**Add a leader portrait**: put `<name>.jpg` in `public/img/country_leaders_portraits/` and add it to `PORTRAITS` and `BY_LEADER` in `public/js/portraits.js`. Any ratio works; the frame crops to 3:4.
+
+**Change the advisors**: the prompt is `advisorsSystem()` and the request `advisorsRequest()` in `server/agents.js`; the opening briefings are data in `server/data/advisors/`; the offline generator is `mockAdvisors()` in `server/mock.js`. Advisors must stay advice-only (no actions).
 
 **Add a nation**: add an entry to `NATIONS`, map its territories in `TERRITORY_OWNERS`, optionally set `playable: true` and add `SUGGESTIONS`.
 
