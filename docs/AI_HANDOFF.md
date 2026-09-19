@@ -34,7 +34,7 @@ Stack: Node.js ≥ 18.17 (ES modules), Express 5, dotenv, vanilla JS frontend wi
 | `server/mock.js` | Keyword-based stand-ins for the turn agents + `mockReport` + `mockAdvisors` (opening briefing from the scenario, then a data-driven briefing) |
 | `server/data/advisors/*.js` | Hand-written opening briefings (economic advisor, diplomat, military advisor) for every playable nation, per campaign |
 | `server/data/scenarios/index.js` | Scenario registry: `SCENARIOS`, `getScenario`, `listScenarios`, `scenarioSummary` |
-| `server/data/scenarios/ww2-1939.js` | WWII campaign data: dates, briefing, `indicators`, `factions`, `nations`, `territoryOwners`, `start*`, aliases, suggestions, timeline |
+| `server/data/scenarios/ww2-1939.js` | WWII campaign data: dates, briefing, `indicators`, `factions`, `nations`, `countryBriefing`, `territoryOwners`, `start*`, aliases, suggestions, timeline |
 | `server/data/scenarios/china-1939.js` | China's War of Resistance campaign (spreads the WWII data and overrides China/CCP) |
 | `server/data/timelines/*.js` | `TIMELINE` of real events per campaign |
 | `server/data/timeline.js` | Generic `eventsBetween(timeline, …)` / `eventsNear(timeline, …)` |
@@ -64,7 +64,9 @@ Data contracts are in `docs/API.md` (state and journal shapes) and `docs/ACTIONS
 
 **Change the advisors**: the prompt is `advisorsSystem()` and the request `advisorsRequest()` in `server/agents.js`; the opening briefings are data in `server/data/advisors/`; the offline generator is `mockAdvisors()` in `server/mock.js`. Advisors must stay advice-only (no actions).
 
-**Add a nation**: add an entry to `NATIONS`, map its territories in `TERRITORY_OWNERS`, optionally set `playable: true` and add `SUGGESTIONS`.
+**Change the start-screen country briefing**: edit `countryBriefing` in `server/data/scenarios/ww2-1939.js` (and `china-1939.js`) — one `{ summary, task }` per playable tag. `scenarioSummary()` in `server/data/scenarios/index.js` exposes it with the playable nations' starting `indicators`; `countryDetailHTML()` in `public/js/panels.js` renders the portrait, facts, derived strengths/watch-outs and the scenario's `suggestions`. `tests/country.test.js` checks every playable nation has a briefing.
+
+**Add a nation**: add an entry to `NATIONS`, map its territories in `TERRITORY_OWNERS`, optionally set `playable: true`, and add `SUGGESTIONS` plus a `countryBriefing` entry.
 
 **Fix or change a border**: edit `tools/build-map.mjs` (grouping tables or a `CLIPS` polygon), run `npm run build-map`, then make sure every territory name used in `server/data/scenario1939.js` (owners, aliases, `home`, `START_OCCUPATION`) still exists. `npm test` catches the most common mistakes.
 

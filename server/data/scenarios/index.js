@@ -38,7 +38,11 @@ export function scenarioSummary(s) {
     indicators: s.indicators,
     factions: s.factions,
     playable: Object.entries(s.nations).filter(([, n]) => n.playable)
-      .map(([tag, n]) => ({ tag, name: n.name, leader: n.leader, ideology: n.ideology, faction: n.faction, color: n.color })),
+      .map(([tag, n]) => ({
+        tag, name: n.name, leader: n.leader, ideology: n.ideology, faction: n.faction,
+        color: n.color, indicators: n.indicators
+      })),
+    countryBriefing: s.countryBriefing || {},
     suggestions: s.suggestions || {}
   };
 }

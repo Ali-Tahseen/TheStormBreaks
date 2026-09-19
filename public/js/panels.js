@@ -348,6 +348,59 @@ export function eventPopupHTML(entry, state, { image = null, summary = '' } = {}
     </div>`;
 }
 
+// ---------- start-screen country briefing ----------
+// Shown when a nation is chosen before the campaign begins: leader portrait,
+// who you lead, a situation report, the immediate task, strengths derived from
+// the starting indicators, and the scenario's example first moves.
+export function countryDetailHTML(sc, tag, portrait) {
+  const n = (sc?.playable || []).find(p => p.tag === tag);
+  if (!n) return '';
+  const b = (sc?.countryBriefing || {})[tag] || {};
+  const defs = sc?.indicators || {};
+  const playable = sc?.playable || [];
+  const rows = Object.entries(n.indicators || {}).filter(([k]) => defs[k]);
+  // Rank each indicator against the other playable nations, so "strengths" and
+  // "watch out for" mean strong/weak for this choice, not on a fixed scale.
+  const share = ([k, v]) => {
+    const vals = playable.map(p => p.indicators?.[k]).filter(x => typeof x === 'number');
+    const lo = vals.length ? Math.min(...vals) : (defs[k].min ?? 0);
+    const hi = vals.length ? Math.max(...vals) : (defs[k].max ?? 100);
+    return (v - lo) / ((hi - lo) || ((defs[k].max ?? 100) - (defs[k].min ?? 0)) || 1);
+  };
+  const ranked = rows.slice().sort((a, c) => share(c) - share(a));
+  const fmt = ([k, v]) => `${defs[k].label || k} ${Math.round(v)}${defs[k].unit ? ` ${defs[k].unit}` : ''}`;
+  const strengths = ranked.slice(0, 2).map(fmt);
+  const watch = ranked.slice(-2).reverse().map(fmt);
+  const moves = (sc.suggestions || {})[tag] || [];
+  const portraitBlock = portrait
+    ? `<div class="portrait-frame"><img src="${esc(portrait.src)}" alt="Portrait of ${esc(portrait.name)}" loading="lazy"></div>
+        <figcaption>${esc(portrait.name)}${portrait.role ? `<span>${esc(portrait.role)}</span>` : ''}${portrait.headOfState ? '<span>Head of state</span>' : ''}</figcaption>`
+    : `<div class="portrait-frame empty"><span class="flag-big" style="${swatchStyle(n)}"></span></div>
+        <figcaption>${esc(n.leader)}</figcaption>`;
+  return `
+    <article class="country-detail">
+      <header class="cd-head">
+        <figure class="cd-portrait">${portraitBlock}</figure>
+        <div class="cd-id">
+          <div class="cd-kicker">You will lead</div>
+          <h3><span class="swatch" style="${swatchStyle(n)}"></span>${esc(n.name)}</h3>
+          <dl class="facts">
+            <dt>Leader</dt><dd>${esc(n.leader)}</dd>
+            <dt>Government</dt><dd>${esc(n.ideology)}</dd>
+            <dt>Faction</dt><dd>${n.faction ? esc(n.faction) : '<span class="muted">None</span>'}</dd>
+          </dl>
+        </div>
+      </header>
+      ${b.summary ? `<p class="cd-summary">${esc(b.summary)}</p>` : ''}
+      ${b.task ? `<p class="cd-task"><b>Your first task:</b> ${esc(b.task)}</p>` : ''}
+      <div class="cd-stats">
+        <div><span class="cd-label">Strengths</span>${strengths.map(esc).join(' · ')}</div>
+        <div><span class="cd-label">Watch out for</span>${watch.map(esc).join(' · ')}</div>
+      </div>
+      ${moves.length ? `<div class="cd-moves"><span class="cd-label">Possible first moves</span><ul>${moves.map(m => `<li>${esc(m)}</li>`).join('')}</ul></div>` : ''}
+    </article>`;
+}
+
 // ---------- lesson drawer ----------
 export function lessonHTML(entry) {
   const l = entry.lesson || {};

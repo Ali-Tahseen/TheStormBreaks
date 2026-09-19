@@ -6,7 +6,7 @@ All endpoints are served by `server/index.js` on `http://localhost:3000` (or `PO
 |---|---|---|---|
 | GET | `/api/info` | | AI config, `audio` (`configured`, allowed `kinds`), scenario list + active scenario, indicator and faction definitions, action types, languages, `hasGame` |
 | GET | `/api/audio/clip` | query `turn`, `kind` | streamed `audio/mpeg` clip for that journal field |
-| GET | `/api/scenarios` | | Compact list of campaigns (id, title, briefing, playable nations, suggestions) |
+| GET | `/api/scenarios` | | Compact list of campaigns (id, title, briefing, playable nations with starting indicators, per-nation `countryBriefing`, suggestions) |
 | GET | `/api/playable` | | Playable nations for the start screen; optional `?scenarioId=` |
 | GET | `/api/timeline` | | Real historical events for the active scenario; optional `?scenarioId=` |
 | GET | `/api/state` | | Full game state (404 if no game) |

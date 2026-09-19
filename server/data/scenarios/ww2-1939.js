@@ -236,6 +236,48 @@ export const SCENARIO = {
     'estonia': 'Estonia', 'latvia': 'Latvia', 'karelia': 'Finland'
   },
 
+  // Country-specific briefing shown on the start screen when a nation is
+  // picked: a short situation report and the immediate strategic task. The
+  // strengths/weaknesses are derived from the nation's starting indicators.
+  countryBriefing: {
+    GER: {
+      summary: 'Germany has rearmed faster than its rivals and enters the war with the strongest army and air force in Europe. Its industry is powerful, but it depends on imports for oil, rubber and much of its food, and the British and French fleets can cut those supplies at sea.',
+      task: 'Destroy Poland quickly, then turn west before Britain and France grow stronger — and avoid the two-front war that ruined Germany in 1914.'
+    },
+    ITA: {
+      summary: 'Italy is a great power with a weak economy: its army is large on paper but short of modern tanks, trucks and guns, and it has little coal or oil of its own. Most Italians do not want a war, and the Pact of Steel with Germany is unpopular.',
+      task: 'Stay out of the fighting for now, rebuild the armed forces and choose a side only when the war’s direction is clearer.'
+    },
+    JAP: {
+      summary: 'Japan has been fighting China since 1937 and its economy is strained. It depends on American oil and scrap iron, and the war on the mainland has no end in sight. The navy is one of the world’s largest, but most of the army is tied down in China.',
+      task: 'End the China war on favourable terms and secure raw materials before American trade restrictions bite.'
+    },
+    UK: {
+      summary: 'Britain has the largest navy in the world and a worldwide empire that can supply food and raw materials. Its army is small, but rearmament has expanded aircraft production and built a modern radar-based air defence.',
+      task: 'Blockade Germany, keep France in the war and bring in the Dominions — while pressing the United States for help.'
+    },
+    FRA: {
+      summary: 'France has a large army and the Maginot Line, but politics are divided, rearmament was slow and aircraft production lags far behind Germany’s. The memory of 1914–18 makes many French people dread another war.',
+      task: 'Hold the German border, keep Britain close and decide whether to strike in the west while Germany is busy in Poland.'
+    },
+    USA: {
+      summary: 'The United States has by far the largest economy in the world but a tiny peacetime army and a deep reluctance to enter another European war. The Neutrality Acts ban arms sales to nations at war.',
+      task: 'Stay out of the war while helping Britain and France short of fighting — and watch Japan’s growing power in the Pacific.'
+    },
+    SOV: {
+      summary: 'The Soviet Union has huge manpower, vast resources and the heavy industry built by the Five-Year Plans, but the Red Army is still recovering from Stalin’s purges of its officers. The pact with Germany buys time and a free hand in eastern Europe.',
+      task: 'Use the pact to secure territory in the west, rebuild the officer corps and prepare for the day Germany turns east.'
+    },
+    CHN: {
+      summary: 'China has been at war with Japan since 1937 and has lost its coast and greatest cities. Its army is huge but poorly equipped, the government has retreated to Chongqing, and foreign aid arrives only by the Burma Road and the long Soviet route.',
+      task: 'Wear Japan down, hold the interior and keep supplies — and the United Front with the Communists — together.'
+    },
+    POL: {
+      summary: 'Poland is caught between Germany and the Soviet Union with brave but outdated armed forces. Britain and France have guaranteed its independence, but neither can reach it quickly.',
+      task: 'Delay the German advance, hold out for an Allied offensive in the west and evacuate what you can to fight on.'
+    }
+  },
+
   // Example orders per nation, shown as clickable suggestions on the start of a game.
   suggestions: {
     GER: ['Sign a trade deal with the Soviet Union for oil and grain', 'Build more U-boats to cut Britain’s supply lines', 'Offer Britain and France peace if they accept the conquest of Poland'],

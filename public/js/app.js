@@ -8,7 +8,8 @@ import { AudioEngine } from './audio.js';
 import { portraitFor } from './portraits.js';
 import {
   esc, fmtDate, nationCard, statsTab, diplomacyMini, journalMini, intelCard, dossierHTML,
-  advisorBarHTML, advisorsHTML, warsOf, logHTML, lessonHTML, hoodHTML, reportHTML, eventPopupHTML
+  advisorBarHTML, advisorsHTML, warsOf, logHTML, lessonHTML, hoodHTML, reportHTML, eventPopupHTML,
+  countryDetailHTML
 } from './panels.js';
 import { pickEventImage, summaryFromNarrative } from './event-images.js';
 
@@ -501,6 +502,7 @@ function startSheetHTML(selectedId, saves, keep = {}) {
   const cur = app.state;
   const lang = keep.lang || app.info.languages[0].id;
   const realism = keep.realism || 'historical';
+  const first = (sc.playable || [])[0];
   return `
     ${cur ? '<button class="close" data-close type="button" aria-label="Close">×</button>' : ''}
     <div>
@@ -521,6 +523,7 @@ function startSheetHTML(selectedId, saves, keep = {}) {
     <form class="picker" id="start-form">
       <h2>Choose your nation</h2>
       <div class="nations">${nationOptionsHTML(sc)}</div>
+      <div id="country-detail">${first ? countryDetailHTML(sc, first.tag, portraitFor(first)) : ''}</div>
       <label class="field"><span>Your name (for the journal)</span><input type="text" name="studentName" maxlength="60" placeholder="Optional" value="${esc(keep.studentName || '')}"></label>
       <div class="field"><span>How strict is history?</span>
         <div class="radio-row">
@@ -547,20 +550,27 @@ async function openStart() {
   const sheet = $('#start .sheet');
   sheet.innerHTML = startSheetHTML(selected, saves);
   $('#start').hidden = false;
-  wireStartSheet(saves);
+  wireStartSheet(saves, selected);
   previewScenarioMusic(selected);
   sheet.querySelector('input[name=player]')?.focus();
 }
 
-function wireStartSheet(saves) {
+function wireStartSheet(saves, selectedId) {
   const sheet = $('#start .sheet');
+  const scenarios = app.info.scenarios || [];
+  const sc = scenarios.find(s => s.id === selectedId) || scenarios[0] || { playable: [] };
+  const detail = sheet.querySelector('#country-detail');
+  sheet.querySelectorAll('input[name=player]').forEach(r => r.addEventListener('change', () => {
+    const n = (sc.playable || []).find(p => p.tag === r.value);
+    if (detail && n) detail.innerHTML = countryDetailHTML(sc, r.value, portraitFor(n));
+  }));
   sheet.querySelectorAll('input[name=scenario]').forEach(r => r.addEventListener('change', () => {
     const form = sheet.querySelector('#start-form');
     const fd = new FormData(form);
     sheet.innerHTML = startSheetHTML(r.value, saves, {
       studentName: fd.get('studentName'), realism: fd.get('realism'), lang: fd.get('lang')
     });
-    wireStartSheet(saves);
+    wireStartSheet(saves, r.value);
     previewScenarioMusic(r.value);
   }));
 }

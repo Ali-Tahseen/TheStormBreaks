@@ -143,6 +143,22 @@ export const SCENARIO = {
     'taiwan': 'Taiwan', 'formosa': 'Taiwan'
   },
 
+  // Country-specific briefing shown on the start screen when a nation is picked.
+  countryBriefing: {
+    CHN: {
+      summary: 'The Nationalist government holds the interior from Chongqing, backed by China’s enormous manpower but very little industry. Japan controls the coast and the great cities, and supplies reach you only by the Burma Road and the long route from the Soviet Union.',
+      task: 'Trade space for time: avoid decisive battles, hold key cities and keep foreign aid — and the United Front — alive.'
+    },
+    CCP: {
+      summary: 'The Communists are a small but disciplined force based at Yan’an, allied to the Nationalists through the United Front but deeply distrustful of them. Your strength is guerrilla warfare and peasant support, not pitched battles.',
+      task: 'Grow your base areas behind Japanese lines, win the countryside and preserve your forces for the struggle after the war.'
+    },
+    JAP: {
+      summary: 'Japan occupies China’s coast and greatest cities, but two years of war have brought no victory. The army is spread thin, the economy is strained, and the United States and Britain are aiding your enemy.',
+      task: 'Force China to surrender or cut its supply lines — without provoking the United States into war.'
+    }
+  },
+
   suggestions: {
     CHN: [
       'Withdraw the government and industry to Chongqing and wear Japan down',
