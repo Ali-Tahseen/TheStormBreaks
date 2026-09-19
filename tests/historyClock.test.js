@@ -51,6 +51,18 @@ test('sandbox mode applies no map events but records the skips', () => {
   assert.ok(clock.fired.some(e => e.id === 'first_changsha' && e.kind === 'lesson'), 'lessons still fire in sandbox');
 });
 
+test('sandbox_plus skips map events and lessons', () => {
+  const s = createGame({ player: 'USA', realism: 'sandbox_plus' }, names);
+  const clock = runClockSkip(s, 2);
+  assert.equal(s.territories['Eastern Poland'].occupation.SOV, undefined);
+  assert.equal(s.territories['Poland'].occupation.GER, undefined);
+  assert.ok(clock.skipped.some(e => e.id === 'soviet_eastern_poland' && e.skippedReason === 'sandbox_plus'));
+  assert.ok(clock.skipped.some(e => e.id === 'first_changsha' && e.skippedReason === 'sandbox_plus'));
+  assert.ok(!clock.fired.some(e => e.id === 'first_changsha'));
+  assert.ok(s.firedScriptedIds.includes('soviet_eastern_poland'));
+  assert.ok(s.firedScriptedIds.includes('first_changsha'));
+});
+
 test('USA: ten months bring Denmark, Norway and the fall of France', () => {
   const s = createGame({ player: 'USA' }, names);
   runClockSkip(s, 10);

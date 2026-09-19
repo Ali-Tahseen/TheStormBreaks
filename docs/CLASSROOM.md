@@ -3,7 +3,7 @@
 ## One lesson (40–50 minutes)
 
 1. **Briefing (10 min).** Students read the start-screen briefing (Versailles → Depression → appeasement → Nazi–Soviet Pact). Ask: *which nation would you least like to lead right now, and why?*
-2. **Play (25 min).** Each student or pair chooses a nation. Use **Historical** mode so unrealistic orders fail with an explanation. Students should aim for 4–6 turns and answer each turn's reflection question in the lesson drawer.
+2. **Play (25 min).** Each student or pair chooses a nation. Use **Historical** mode so unrealistic orders fail with an explanation. Do not use **Sandbox++** in lessons: it removes Game Master limits and is not for class. Students should aim for 4–6 turns and answer each turn's reflection question in the lesson drawer.
 3. **Debrief (10 min).** Compare outcomes across the room. Useful questions:
    - Whose order failed, and what historical factor made it impossible?
    - Did anyone avoid war? What did it cost?

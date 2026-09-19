@@ -102,7 +102,7 @@ server.registerTool('new_game', {
   inputSchema: {
     scenarioId: z.string().optional().describe('Scenario id, e.g. ww2-1939 or china-1939'),
     player: z.string().optional().describe('Nation tag, e.g. GER, CHN, CCP'),
-    realism: z.enum(['historical', 'sandbox']).optional(),
+    realism: z.enum(['historical', 'sandbox', 'sandbox_plus']).optional(),
     lang: z.enum(['en', 'zh-Hant', 'zh-Hans']).optional()
   }
 }, async (args) => {

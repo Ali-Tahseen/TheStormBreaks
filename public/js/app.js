@@ -532,6 +532,7 @@ function startSheetHTML(selectedId, saves, keep = {}) {
         <div class="radio-row">
           <label><input type="radio" name="realism" value="historical" ${realism === 'historical' ? 'checked' : ''}><b>Historical</b>Orders must be possible with the armies, money and politics of the time.</label>
           <label><input type="radio" name="realism" value="sandbox" ${realism === 'sandbox' ? 'checked' : ''}><b>Sandbox</b>Bold “what if” orders usually succeed, with realistic costs.</label>
+          <label><input type="radio" name="realism" value="sandbox_plus" ${realism === 'sandbox_plus' ? 'checked' : ''}><b>Sandbox++</b>No Game Master limits; your orders rewrite the rest of the war. Not for class.</label>
         </div>
       </div>
       <label class="field"><span>Story language</span>

@@ -106,7 +106,7 @@ export function createGame(opts = {}, mapNames = []) {
     turn: 1,
     player,
     studentName: String(opts.studentName || '').slice(0, 60),
-    realism: opts.realism === 'sandbox' ? 'sandbox' : 'historical',
+    realism: ['historical', 'sandbox', 'sandbox_plus'].includes(opts.realism) ? opts.realism : 'historical',
     nations,
     territories,
     wars: scenario.startWars.map(([a, b]) => [a, b]),

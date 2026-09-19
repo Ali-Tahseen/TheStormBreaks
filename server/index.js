@@ -213,7 +213,7 @@ app.post('/api/reflection', (req, res) => {
 app.post('/api/settings', (req, res) => {
   if (!game) return res.status(400).json({ error: 'Start a new game first.' });
   const { realism, lang } = req.body || {};
-  if (realism === 'historical' || realism === 'sandbox') game.realism = realism;
+  if (['historical', 'sandbox', 'sandbox_plus'].includes(realism)) game.realism = realism;
   if (['en', 'zh-Hant', 'zh-Hans'].includes(lang)) game.lang = lang;
   save(); broadcast();
   res.json(publicState(game));

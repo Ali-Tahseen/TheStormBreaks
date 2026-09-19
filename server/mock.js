@@ -139,6 +139,9 @@ export function mockGameMaster(state, order) {
     actions.push({ type: 'change_indicator', country: player, indicator: 'stability', delta: 1, reason: 'Steady government' });
     story.push(`Officials in ${P.name} studied the order carefully, but little changed on the ground this month.`);
   }
+  if (state.realism === 'sandbox_plus') {
+    feasibility = 'success';
+  }
 
   return {
     interpretation: `The player ordered: "${order.slice(0, 160)}"`,
@@ -203,7 +206,16 @@ export function mockReport(state, metrics) {
   const netTerritory = (metrics.territoriesGained?.length || 0) - (metrics.territoriesLost?.length || 0);
   const econ = metrics.indicatorChanges || {};
   const econScore = 50 + (econ.gdp || 0) * 0.15 + (econ.industry || 0) * 0.6 + (econ.resources || 0) * 0.3;
-  const realism = 40 + successRate * 50 - (metrics.playerCapitulated ? 20 : 0);
+  const remade = (metrics.territoriesGained?.length || 0)
+    + (metrics.territoriesLost?.length || 0)
+    + (metrics.warsStarted?.length || 0)
+    + (metrics.enemiesDefeated?.length || 0);
+  const realism = state.realism === 'sandbox_plus'
+    ? 55 + successRate * 35 + Math.min(10, remade * 2)
+    : 40 + successRate * 50 - (metrics.playerCapitulated ? 20 : 0);
+  const realismRationale = state.realism === 'sandbox_plus'
+    ? 'How thoroughly the campaign remade the timeline, not how closely it followed 1939-45.'
+    : `${Math.round(successRate * 100)}% of your orders were judged plausible for the period.`;
   const strategic = 50 + netTerritory * 6 + (metrics.enemiesDefeated?.length || 0) * 10 - (metrics.playerCapitulated ? 30 : 0);
   const diplomacy = 50 + (metrics.warsEnded?.length || 0) * 8 - (metrics.warsStarted?.length || 0) * 6;
   const quality = 35 + successRate * 55;
@@ -224,7 +236,7 @@ export function mockReport(state, metrics) {
   return {
     summary: `You led ${metrics.player.name} for ${metrics.turns} turns to ${metrics.period.to}. You gained ${metrics.territoriesGained?.length || 0} territories and lost ${metrics.territoriesLost?.length || 0}. (Offline demo assessment — connect an LLM for a full examiner's report.)`,
     grades: {
-      historical_realism: { score: clamp(realism), rationale: `${Math.round(successRate * 100)}% of your orders were judged plausible for the period.` },
+      historical_realism: { score: clamp(realism), rationale: realismRationale },
       strategic_effectiveness: { score: clamp(strategic), rationale: `Net territorial change: ${netTerritory >= 0 ? '+' : ''}${netTerritory}.` },
       economic_management: { score: clamp(econScore), rationale: 'Based on GDP, industry and resource changes.' },
       diplomacy: { score: clamp(diplomacy), rationale: `${(metrics.warsStarted?.length || 0)} wars started, ${(metrics.warsEnded?.length || 0)} ended.` },

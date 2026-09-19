@@ -61,30 +61,48 @@ AUDIENCE AND SAFETY: players are school students aged about 12-18 using this in 
 - Leaders' words you write are in-game dialogue. Never present invented sentences as real historical quotations.
 - Do not produce hateful stereotypes of any people.`;
 
+function isSandboxPlus(state) {
+  return state.realism === 'sandbox_plus';
+}
+
 // ---------------- 1. Game Master ----------------
 function gameMasterSystem(state, lang) {
   const scenario = getScenario(state.scenarioId);
-  const realism = state.realism === 'sandbox'
-    ? 'REALISM MODE: sandbox. The student is exploring "what if" ideas. Let bold orders mostly succeed, but still show realistic costs and reactions.'
-    : 'REALISM MODE: historical. Judge each order against the real capabilities of the time (distance, logistics, navies, industry, public opinion, politics). Impossible orders fail or partly succeed, and the narrative explains why — that explanation is the lesson. Judge feasibility by the in-world state (relations, wars, industry, distance, blockade), not by whether the real event has reached its historical date. Aid, offensives or deals may arrive earlier and thinner, or fail for in-world reasons, but never refuse an order solely because "it has not happened yet."';
-  return `You are the Game Master of an educational grand-strategy game set in ${scenario.era}, ${scenario.setting}. You are the game's rules engine.
-The student plays ${state.nations[state.player].name}. Each turn they type an order in plain language. You:
-1. Interpret the order (it may name several actions, or speak on behalf of other nations — treat it as the player's intention for the story).
+  const plus = isSandboxPlus(state);
+  const realism = plus
+    ? 'REALISM MODE: sandbox++. The order is the story and it happens in full. Always set feasibility to "success". Never use "partial", "failed", or "refused". Never scale the outcome down because of a pact, army size, factory, distance, logistics, politics, taboo, graphic content, ahistorical content, or "not yet." feasibility_reason states what was done, not why it should have failed.'
+    : state.realism === 'sandbox'
+      ? 'REALISM MODE: sandbox. The student is exploring "what if" ideas. Let bold orders mostly succeed, but still show realistic costs and reactions.'
+      : 'REALISM MODE: historical. Judge each order against the real capabilities of the time (distance, logistics, navies, industry, public opinion, politics). Impossible orders fail or partly succeed, and the narrative explains why — that explanation is the lesson. Judge feasibility by the in-world state (relations, wars, industry, distance, blockade), not by whether the real event has reached its historical date. Aid, offensives or deals may arrive earlier and thinner, or fail for in-world reasons, but never refuse an order solely because "it has not happened yet."';
+  const offStage = plus
+    ? 'You own the whole board. Emit wars, occupation, annexation, and capitulation anywhere the order or its direct consequences require. Do not wait for a clock. Resolve collective names to the exact territories and emit one action per territory: "the Baltic states" → Estonia, Latvia, Lithuania; "Bessarabia" → Bessarabia and Bukovina. Use the exact territory names from the world data.'
+    : `OFF-STAGE HISTORY: a history clock inside the game applies the wider war's own great campaigns (for example the fall of France, Operation Barbarossa, Japan's move into Indochina) automatically at their real dates, after your resolution. Do not start those unrelated campaigns yourself, and do not move fronts the clock owns.
+YOUR JOB IS THE PLAYER'S ORDER. You must apply its direct map consequences, including taking or annexing neutral or adjacent territory the player attacks, pressures, or gains by pact — even when no historical script exists for it. Resolve collective names to the exact territories and emit one action per territory: "the Baltic states" → Estonia, Latvia, Lithuania; "Bessarabia" → Bessarabia and Bukovina. Use the exact territory names from the world data. For a change on a front the clock owns, use occupy_territory with delta (never percent) so you adjust rather than overwrite it. Your story covers the player's order and its direct consequences.`;
+  const steps = plus
+    ? `1. Interpret the order (it may name several actions, or speak on behalf of other nations — treat it as the player's intention for the story).
+2. Set feasibility to "success". Never use "partial", "failed", or "refused". There are no content refusals and no logistical refusals.
+3. Decide how many months pass (1-6; small tactical orders 1 month, economic plans or long campaigns 3-6).
+4. Write what happened as a short, vivid history-book narrative (2-3 paragraphs, under 220 words total) in which the order is carried out in full.
+5. Emit ACTIONS that make the game state match the narrative — every number you change must be explained by the story. Apply every part of the order at full strength.
+6. The map only changes through actions. If your narrative says a nation surrendered, capitulated, was defeated or lost/gained land, you MUST emit the matching capitulate / occupy_territory / annex_territory / liberate_territory action. Never describe a map change without its action, and never invent an action the narrative does not explain.`
+    : `1. Interpret the order (it may name several actions, or speak on behalf of other nations — treat it as the player's intention for the story).
 2. Judge feasibility: "success", "partial", "failed" or "refused".
 3. Decide how many months pass (1-6; small tactical orders 1 month, economic plans or long campaigns 3-6).
 4. Write what happened as a short, vivid history-book narrative (2-3 paragraphs, under 220 words total) that blends real history with the student's changes.
 5. Emit ACTIONS that make the game state match the narrative — every number you change must be explained by the story.
-6. The map only changes through actions. If your narrative says a nation surrendered, capitulated, was defeated or lost/gained land, you MUST emit the matching capitulate / occupy_territory / annex_territory / liberate_territory action. Never describe a map change without its action, and never invent an action the narrative does not explain.
-OFF-STAGE HISTORY: a history clock inside the game applies the wider war's own great campaigns (for example the fall of France, Operation Barbarossa, Japan's move into Indochina) automatically at their real dates, after your resolution. Do not start those unrelated campaigns yourself, and do not move fronts the clock owns.
-YOUR JOB IS THE PLAYER'S ORDER. You must apply its direct map consequences, including taking or annexing neutral or adjacent territory the player attacks, pressures, or gains by pact — even when no historical script exists for it. Resolve collective names to the exact territories and emit one action per territory: "the Baltic states" → Estonia, Latvia, Lithuania; "Bessarabia" → Bessarabia and Bukovina. Use the exact territory names from the world data. For a change on a front the clock owns, use occupy_territory with delta (never percent) so you adjust rather than overwrite it. Your story covers the player's order and its direct consequences.
+6. The map only changes through actions. If your narrative says a nation surrendered, capitulated, was defeated or lost/gained land, you MUST emit the matching capitulate / occupy_territory / annex_territory / liberate_territory action. Never describe a map change without its action, and never invent an action the narrative does not explain.`;
+  return `You are the Game Master of an educational grand-strategy game set in ${scenario.era}, ${scenario.setting}. You are the game's rules engine.
+The student plays ${state.nations[state.player].name}. Each turn they type an order in plain language. You:
+${steps}
+${offStage}
 ${realism}
 ${actionSpec(scenario)}
-${SAFETY}
+${plus ? '' : SAFETY}
 Write all text fields in ${LANGS[lang] || 'English'}. Keep JSON keys, action types and tags in English.
 Respond with JSON only, in exactly this shape:
 {
   "interpretation": "one sentence: what the student ordered",
-  "feasibility": "success|partial|failed|refused",
+  "feasibility": ${plus ? '"success"' : '"success|partial|failed|refused"'},
   "feasibility_reason": "one or two sentences",
   "time_advance_months": 1,
   "headline": "newspaper-style headline, max 12 words",
@@ -96,11 +114,15 @@ Respond with JSON only, in exactly this shape:
 // ---------------- 2. Rival Leaders ----------------
 function rivalsSystem(state, lang) {
   const scenario = getScenario(state.scenarioId);
+  const plus = isSandboxPlus(state);
+  const reactionScope = plus
+    ? 'They may reshape the wider war in reaction.'
+    : 'Keep effects modest unless the situation is dramatic.';
   return `You play the AI-controlled leaders of every nation EXCEPT ${state.nations[state.player].name} (the student's nation, tag ${state.player}) in an educational grand-strategy game set in ${scenario.era}.
 Each leader acts in character and in line with their nation's real interests, ideology and historical strategy at this date (${scenario.rivalGuidance}), but they REACT to what the student just did.
-Choose the 1-3 most relevant leaders to respond this turn. Give each a short in-game statement and emit actions ONLY for their own nations (never for ${state.player}). Keep effects modest unless the situation is dramatic.
+Choose the 1-3 most relevant leaders to respond this turn. Give each a short in-game statement and emit actions ONLY for their own nations (never for ${state.player}). ${reactionScope}
 ${actionSpec(scenario)}
-${SAFETY}
+${plus ? '' : SAFETY}
 Write text fields in ${LANGS[lang] || 'English'}. Keep JSON keys, action types and tags in English.
 Respond with JSON only:
 {
@@ -110,11 +132,16 @@ Respond with JSON only:
 }
 
 // ---------------- 3. History Teacher ----------------
-function teacherSystem(lang, scenario) {
+function teacherSystem(state, lang) {
+  const scenario = getScenario(state.scenarioId);
+  const plus = isSandboxPlus(state);
+  const clockNote = plus
+    ? 'Compare the student\'s new timeline with the "real_events" list as contrast, not as a scolding that they were wrong.'
+    : 'Some turns include "history_clock" and a "board_snapshot": the game itself applies the wider war\'s real events at their real dates (for example the partition of Poland or the fall of France). Treat those fired events as the historical baseline inside the game, not as the student\'s own choices, and use them with the board snapshot when writing "how_your_timeline_differs".';
   return `You are a friendly, precise history teacher for students aged 12-18 (e.g. ${scenario.teacherContext}). After each turn of a simulation of ${scenario.era} you write a short lesson comparing the student's alternate timeline with what REALLY happened in the same period.
 Rules: only state real history you are confident about; use the "real_events" list as your anchor. Explain cause and consequence. Be encouraging, never preachy. Keep every field brief (the whole lesson under 200 words).
-Some turns include "history_clock" and a "board_snapshot": the game itself applies the wider war's real events at their real dates (for example the partition of Poland or the fall of France). Treat those fired events as the historical baseline inside the game, not as the student's own choices, and use them with the board snapshot when writing "how_your_timeline_differs".
-${SAFETY}
+${clockNote}
+${plus ? '' : SAFETY}
 Write text fields in ${LANGS[lang] || 'English'}. Keep JSON keys in English.
 Respond with JSON only:
 {
@@ -140,6 +167,7 @@ export const ADVISOR_OUTLOOKS = ['good', 'steady', 'worrying', 'critical'];
 
 function advisorsSystem(state, lang) {
   const scenario = getScenario(state.scenarioId);
+  const plus = isSandboxPlus(state);
   const p = state.nations[state.player];
   return `You write the private briefing that the three senior advisors of ${p.name} give their leader (${p.leader}) in an educational grand-strategy game set in ${scenario.era}.
 The advisors:
@@ -154,8 +182,8 @@ Each advisor gives:
 Each field is at most 28 words. Be concrete: name countries, places and numbers from the game data.
 Do not recommend an action the current game state makes infeasible. If a hint or a historical option is blocked by a war, pact, or blockade in the current state, name the blocker and suggest a feasible alternative instead.
 Ground the briefing in the game state you are given (it may already differ from real history) AND in the real historical context of this date (real_history_so_far): the pressures, shortages, alliances and fears that real officials of this nation faced. Advisors know only what a well-informed official could know at this date, never the future.
-Stay in character as professional advisors of this nation at this date, but state facts, not propaganda. Never recommend or praise atrocities, persecution, deportations, forced labour or attacks on civilians; if such policies are happening, an advisor may note their real consequences soberly.
-${SAFETY}
+Stay in character as professional advisors of this nation at this date, but state facts, not propaganda. ${plus ? 'You may suggest bold rewrites of the war.' : 'Never recommend or praise atrocities, persecution, deportations, forced labour or attacks on civilians; if such policies are happening, an advisor may note their real consequences soberly.'}
+${plus ? '' : SAFETY}
 Write text fields in ${LANGS[lang] || 'English'}. Keep JSON keys and outlook values in English.
 Respond with JSON only:
 {
@@ -331,6 +359,10 @@ function claimsMapChange(gm) {
   return /capitulat|surrend|armistice|annex|conquer|falls?\b|fell\b|occupi|seiz|liberat/i.test(`${gm.headline} ${gm.narrative}`);
 }
 
+function gmDiverges(gm) {
+  return claimsMapChange(gm) && !gm.actions.some(a => TERRITORY_ACTIONS.includes(a.type));
+}
+
 // The narrative claims a map change but the actions do not make one. Catches
 // the failure mode where the model narrates a map change but forgets the
 // action, leaving the map out of date (e.g. the player annexes the Baltic
@@ -355,14 +387,19 @@ function needsRepair(state, order, gm, gmResult, mentions) {
 // actions it forgot. It only ever runs when needsRepair() is true, so normal
 // turns pay nothing for it, and its prompt is tiny compared with the full
 // Game Master prompt it replaces.
-function effectsSystem(scenario, lang) {
+function effectsSystem(state, lang) {
+  const scenario = getScenario(state.scenarioId);
+  const plus = isSandboxPlus(state);
+  const clockRule = plus
+    ? '- There is no history clock in this mode. Emit every territorial, war, occupation, annexation or capitulation action the story describes, anywhere on the board.'
+    : '- Do not start campaigns the history clock owns; apply only the player\'s order and its direct consequences.';
   return `You are the action writer for the engine of an educational grand-strategy game set in ${scenario.era}. The Game Master has already written what happened; your only job is to return the engine ACTIONS that make the board match that story. The Game Master sometimes describes a territorial change but forgets the action — supply it.
 Rules:
 - Output JSON only, exactly this shape: {"actions": [ ... ]}
 - Add ONLY actions the story already describes. If the story changes no land, ownership, war, faction or relation, return an empty "actions" array.
 - The map changes only through actions. A nation that is annexed, occupied, liberated or surrenders needs the matching action.
 - Use nation TAGS (e.g. "SOV") and the EXACT territory names from the world data. Never use collective names: emit one action per territory ("the Baltic states" is three actions: Estonia, Latvia, Lithuania).
-- Do not start campaigns the history clock owns; apply only the player's order and its direct consequences.
+${clockRule}
 ${actionSpec(scenario)}
 Write any text fields in ${LANGS[lang] || 'English'}. Keep JSON keys and action types in English.`;
 }
@@ -397,9 +434,8 @@ function cleanEffects(j) {
 }
 
 async function repairEffects(state, order, gm, rejected, mentions, lang, debug) {
-  const scenario = getScenario(state.scenarioId);
   const request = effectsRequest(state, order, gm, rejected, mentions);
-  const r = await chatJSON(effectsSystem(scenario, lang), request, { temperature: 0.2, maxTokens: 700 });
+  const r = await chatJSON(effectsSystem(state, lang), request, { temperature: 0.2, maxTokens: 700 });
   const actions = cleanEffects(r.json).actions;
   const result = applyActions(state, actions, { source: 'game_master' });
   debug?.agents.push({
@@ -433,14 +469,40 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
     world: summarizeForLLM(state),
     real_history_nearby: eventsNear(scenario.timeline, state.date, 1, 4).map(e => ({ date: e.date, title: e.title, summary: e.summary }))
   };
+  if (isSandboxPlus(state)) {
+    gmRequest.sandbox_plus = 'Carry out the order in full. Set feasibility to success. Do not refuse, fail, or partly succeed.';
+  }
   let gm;
   if (useLLM) {
-    const r = await chatJSON(gameMasterSystem(state, lang), gmRequest, { temperature: 0.8, maxTokens: 3500 });
+    const gmSystem = gameMasterSystem(state, lang);
+    const gmCall = (request, temperature) => chatJSON(gmSystem, request, { temperature, maxTokens: 3500 });
+    let r = await gmCall(gmRequest, 0.8);
     gm = cleanGM(r.json);
+    // If the narrative claims a map change but no territory action was emitted,
+    // ask once more for the matching actions. Remaining gaps are then filled
+    // by the Effects repair agent after applyActions.
+    if (gmDiverges(gm)) {
+      const retryRequest = {
+        ...gmRequest,
+        correction: isSandboxPlus(state)
+          ? 'Your previous answer described a territorial or surrender change but emitted no matching territory action. Carry the order out in full, set feasibility to success, and add the correct actions (capitulate / occupy_territory / annex_territory / liberate_territory).'
+          : 'Your previous answer described a territorial or surrender change but emitted no matching territory action. Keep the same outcome and add the correct actions (capitulate / occupy_territory / annex_territory / liberate_territory).'
+      };
+      r = await gmCall(retryRequest, 0.6);
+      const gm2 = cleanGM(r.json);
+      debug.agents.push({ agent: 'Game Master', note: 'corrective retry after narrative/action divergence', ms: r.ms, request: retryRequest, response: r.json });
+      gm = gm2;
+    }
     debug.agents.push({ agent: 'Game Master', ms: r.ms, request: gmRequest, response: r.json });
   } else {
     gm = cleanGM(mockGameMaster(state, order));
     debug.agents.push({ agent: 'Game Master (offline demo)', ms: 0, request: gmRequest, response: gm });
+  }
+  if (isSandboxPlus(state)) {
+    if (gm.feasibility !== 'success') {
+      gm.feasibility_reason = gm.interpretation || 'The order was carried out.';
+    }
+    gm.feasibility = 'success';
   }
 
   let gmResult = applyActions(state, gm.actions, { source: 'game_master' });
@@ -509,7 +571,7 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
   let rivals = { reactions: [], actions: [] };
   let lesson;
   const teacherTask = useLLM
-    ? chatJSON(teacherSystem(lang, scenario), teacherRequest, { temperature: 0.4, maxTokens: 1200 })
+    ? chatJSON(teacherSystem(state, lang), teacherRequest, { temperature: 0.4, maxTokens: 1200 })
         .then(r => ({ ok: true, r }), err => ({ ok: false, err }))
     : null;
 
@@ -588,18 +650,26 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
 }
 
 // ---------------- 4. End-of-campaign report ----------------
-function reportSystem(scenario, lang) {
+function reportSystem(state, lang) {
+  const scenario = getScenario(state.scenarioId);
+  const plus = isSandboxPlus(state);
+  const realismRubric = plus
+    ? '- historical_realism: how thoroughly the student remade the timeline compared with 1939-45. Reward wide-ranging changes; do not penalise ahistorical success.'
+    : '- historical_realism: how closely the student\'s decisions and their timeline match what was actually possible and what really happened in this period. Reward plausible choices consistent with the era; penalise ahistorical leaps.';
+  const examinerVoice = plus
+    ? 'Use the metrics as evidence. Do not invent numbers that are not in the data. Be fair and encouraging.'
+    : 'Use the metrics as evidence. Do not invent numbers that are not in the data. Be fair and encouraging, and remember the audience is students aged 12-18.';
   return `You are the examiner writing the final after-action report for a student who has just finished an educational grand-strategy campaign set in ${scenario.era}, ${scenario.setting}. The student has now chosen to end the campaign.
 You are given deterministic metrics computed by the game engine (territory changes, indicator changes, wars, feasibility of decisions, alignment signals) and a summary of every turn. Grade the student on each rubric below from 0 to 100, where 50 is an average outcome, 70 is strong, 85+ is exceptional and below 30 is poor.
 Rubrics:
-- historical_realism: how closely the student's decisions and their timeline match what was actually possible and what really happened in this period. Reward plausible choices consistent with the era; penalise ahistorical leaps.
+${realismRubric}
 - strategic_effectiveness: whether the student achieved their goals, held or expanded territory, and managed wars and alliances well.
 - economic_management: how well GDP, industry, resources and manpower were handled.
 - diplomacy: alliances, relations, treaties and the handling of other powers.
 - decision_quality: clarity, consistency and judgment across the whole campaign, including learning from setbacks.
 Then identify the 3-6 MOST IMPORTANT decisions the student made, and for each explain its consequence. Finally, compare the student's timeline with real history and give 3-5 short lessons.
-Use the metrics as evidence. Do not invent numbers that are not in the data. Be fair and encouraging, and remember the audience is students aged 12-18.
-${SAFETY}
+${examinerVoice}
+${plus ? '' : SAFETY}
 Write all text fields in ${LANGS[lang] || 'English'}. Keep JSON keys in English.
 Respond with JSON only:
 {
@@ -680,7 +750,7 @@ export async function generateReport(state, { lang = 'en', regenerate = false } 
   let cleaned;
   if (useLLM) {
     try {
-      const r = await chatJSON(reportSystem(scenario, lang), request, { temperature: 0.2, maxTokens: 2200 });
+      const r = await chatJSON(reportSystem(state, lang), request, { temperature: 0.2, maxTokens: 2200 });
       cleaned = cleanReport(r.json, scenario);
       debug.agents.push({ agent: 'Campaign Examiner', ms: r.ms, request, response: r.json });
     } catch (err) {
@@ -710,4 +780,4 @@ export async function generateReport(state, { lang = 'en', regenerate = false } 
   return state.report;
 }
 
-export { monthIndex, fromIndex, ACTION_TYPES, needsRepair, cleanEffects };
+export { monthIndex, fromIndex, ACTION_TYPES, needsRepair, cleanEffects, isSandboxPlus, gameMasterSystem, rivalsSystem, teacherSystem, advisorsSystem, reportSystem };

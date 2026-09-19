@@ -4,10 +4,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createGame, applyActions, advanceTime, resolveNation, resolveTerritory } from '../server/engine.js';
-import { mockGameMaster } from '../server/mock.js';
+import { mockGameMaster, mockReport } from '../server/mock.js';
 import { getScenario, listScenarios } from '../server/data/scenarios/index.js';
 import { computeMetrics, scoreFromGrades, applyWeights, letterGrade } from '../server/report.js';
-import { generateReport } from '../server/agents.js';
+import { generateReport, gameMasterSystem, rivalsSystem, teacherSystem, advisorsSystem, reportSystem } from '../server/agents.js';
 
 const topo = JSON.parse(fs.readFileSync(new URL('../public/data/world-1939.json', import.meta.url)));
 const names = topo.objects.territories.geometries.map(g => g.properties.name);
@@ -179,6 +179,77 @@ await asyncTest('offline after-action report is complete and reproducible', asyn
   const r2 = await generateReport(s, { regenerate: true });
   assert.deepEqual(r1.metrics, r2.metrics, 'metrics are deterministic');
   assert.equal(r1.overall.score, r2.overall.score, 'overall score is reproducible');
+});
+
+test('createGame stores sandbox_plus and rejects unknown realism values', () => {
+  assert.equal(createGame({ player: 'GER', realism: 'sandbox_plus' }, names).realism, 'sandbox_plus');
+  assert.equal(createGame({ player: 'GER', realism: 'sandbox' }, names).realism, 'sandbox');
+  assert.equal(createGame({ player: 'GER' }, names).realism, 'historical');
+  assert.equal(createGame({ player: 'GER', realism: 'arcade' }, names).realism, 'historical');
+});
+
+test('sandbox_plus mock GM applies invasions at full strength', () => {
+  const order = 'The United States takes 40% of European Russia';
+  const plus = mockGameMaster(createGame({ player: 'USA', realism: 'sandbox_plus' }, names), order);
+  const hist = mockGameMaster(createGame({ player: 'USA', realism: 'historical' }, names), order);
+  const plusOcc = plus.actions.find(a => a.type === 'occupy_territory');
+  const histOcc = hist.actions.find(a => a.type === 'occupy_territory');
+  assert.equal(plus.feasibility, 'success');
+  assert.notEqual(plus.feasibility, 'refused');
+  assert.equal(plusOcc.delta, 40);
+  assert.equal(hist.feasibility, 'partial');
+  assert.ok(histOcc.delta < 40);
+});
+
+test('sandbox_plus mock report does not treat ahistorical success as low historical_realism', () => {
+  const metrics = {
+    player: { name: 'United States' },
+    turns: 3,
+    period: { to: 'December 1939' },
+    territoriesGained: ['Canada'],
+    territoriesLost: [],
+    warsStarted: ['SOV'],
+    warsEnded: [],
+    enemiesDefeated: [],
+    playerCapitulated: false,
+    feasibility: { success: 3, partial: 0, failed: 0, refused: 0 },
+    indicatorChanges: {},
+    realEventsInPeriod: []
+  };
+  const plus = mockReport(createGame({ player: 'USA', realism: 'sandbox_plus' }, names), metrics);
+  const hist = mockReport(createGame({ player: 'USA', realism: 'historical' }, names), metrics);
+  assert.ok(plus.grades.historical_realism.score >= 70);
+  assert.ok(!/plausible for the period/i.test(plus.grades.historical_realism.rationale));
+  assert.match(hist.grades.historical_realism.rationale, /plausible for the period/);
+});
+
+test('SAFETY is omitted only in sandbox_plus prompts', () => {
+  const hist = createGame({ player: 'GER', realism: 'historical' }, names);
+  const sand = createGame({ player: 'GER', realism: 'sandbox' }, names);
+  const plus = createGame({ player: 'GER', realism: 'sandbox_plus' }, names);
+  const builders = [gameMasterSystem, rivalsSystem, teacherSystem, advisorsSystem, reportSystem];
+  for (const mode of [hist, sand]) {
+    for (const build of builders) {
+      assert.ok(build(mode, 'en').includes('AUDIENCE AND SAFETY'), `${mode.realism} keeps SAFETY`);
+    }
+  }
+  for (const build of builders) {
+    assert.ok(!build(plus, 'en').includes('AUDIENCE AND SAFETY'), 'sandbox_plus omits SAFETY');
+  }
+  assert.ok(gameMasterSystem(plus, 'en').includes('You own the whole board'));
+  assert.ok(gameMasterSystem(plus, 'en').includes('Never use "partial"'));
+  assert.ok(gameMasterSystem(hist, 'en').includes('Judge feasibility'));
+  assert.ok(gameMasterSystem(hist, 'en').includes('OFF-STAGE HISTORY'));
+  assert.ok(gameMasterSystem(sand, 'en').includes('OFF-STAGE HISTORY'));
+  assert.ok(rivalsSystem(plus, 'en').includes('reshape the wider war'));
+  assert.ok(rivalsSystem(hist, 'en').includes('Keep effects modest'));
+  assert.ok(teacherSystem(plus, 'en').includes('as contrast'));
+  assert.ok(teacherSystem(hist, 'en').includes('historical baseline'));
+  assert.ok(advisorsSystem(plus, 'en').includes('bold rewrites'));
+  assert.ok(advisorsSystem(hist, 'en').includes('Never recommend or praise atrocities'));
+  assert.ok(reportSystem(plus, 'en').includes('remade the timeline'));
+  assert.ok(reportSystem(hist, 'en').includes('penalise ahistorical leaps'));
+  assert.ok(reportSystem(plus, 'en').includes('"historical_realism"'));
 });
 
 console.log(`\n${passed} tests passed`);

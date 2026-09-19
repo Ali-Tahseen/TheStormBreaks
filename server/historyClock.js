@@ -8,6 +8,7 @@
 // validated, clamped and auditable, and no new action types exist.
 //
 // An event is skipped (and recorded) when:
+//   - the game is in sandbox_plus mode (map and lesson events),
 //   - the game is in sandbox mode (map events only; lessons still fire),
 //   - the player's own nation is one of the event's actors (a hint is
 //     returned instead, so the student sees what history expected of them),
@@ -72,6 +73,7 @@ export function dueEvents(state, monthDate = state.date) {
 // 'apply' | 'lesson' | 'hint' | 'skip' | 'fired'.
 export function evaluate(state, event) {
   if ((state.firedScriptedIds || []).includes(event.id)) return { verdict: 'fired' };
+  if (state.realism === 'sandbox_plus') return { verdict: 'skip', reason: 'sandbox_plus' };
   if (event.kind === 'lesson') return { verdict: 'lesson' };
   if (state.realism === 'sandbox') return { verdict: 'skip', reason: 'sandbox' };
   const actors = (event.actors || []).map(r => resolveNation(state, r)).filter(Boolean);

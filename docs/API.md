@@ -26,7 +26,7 @@ All endpoints are served by `server/index.js` on `http://localhost:3000` (or `PO
 | GET | `/api/report.json` | | The after-action report as a downloadable JSON file |
 | GET | `/api/events` | | Server-Sent Events stream: `{type: "state"|"busy"|"idle"|"hello", version}` |
 
-Values: `scenarioId` is `ww2-1939` or `china-1939`; `player` is a tag (`GER`, `CHN`, `CCP`, …); `realism` is `historical` or `sandbox`; `lang` is `en`, `zh-Hant` or `zh-Hans`.
+Values: `scenarioId` is `ww2-1939` or `china-1939`; `player` is a tag (`GER`, `CHN`, `CCP`, …); `realism` is `historical`, `sandbox` or `sandbox_plus`; `lang` is `en`, `zh-Hant` or `zh-Hans`.
 
 `/api/turn` returns **409** if a turn is already running and **502** if the AI call fails. A failed turn restores the state exactly as it was before.
 

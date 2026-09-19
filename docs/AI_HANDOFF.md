@@ -14,7 +14,7 @@ Stack: Node.js ≥ 18.17 (ES modules), Express 5, dotenv, vanilla JS frontend wi
 2. **Every new capability is an action type** with validation in `APPLY`, a line in `actionSpec()` (`server/agents.js`), docs in `docs/ACTIONS.md`, and a test.
 3. **Agents return JSON only**, cleaned by `cleanGM` / `cleanRivals` / `cleanLesson`. Add new fields there with defaults and length limits.
 4. **Offline mode must keep working.** If you change an agent's output shape, update `server/mock.js` to match.
-5. **Student safety** (`SAFETY` in `agents.js`): no graphic content, atrocities never playable, Holocaust taught accurately, invented dialogue never presented as real quotes. Don't weaken this.
+5. **Student safety** (`SAFETY` in `agents.js`): no graphic content, atrocities never playable, Holocaust taught accurately, invented dialogue never presented as real quotes. Don't weaken this. It is injected for `historical` and `sandbox` only; omit it solely when `state.realism === 'sandbox_plus'` (Sandbox++).
 6. **The frontend renders; it doesn't simulate.** Game logic belongs on the server.
 7. **Escape all text** inserted into HTML with `esc()` from `public/js/panels.js`.
 8. **Keep the engine scenario-agnostic.** Never import a scenario file directly into `engine.js`, `agents.js` or `mock.js`; resolve values through `getScenario(state.scenarioId)` from `server/data/scenarios/index.js`.
@@ -26,8 +26,8 @@ Stack: Node.js ≥ 18.17 (ES modules), Express 5, dotenv, vanilla JS frontend wi
 |---|---|
 | `server/index.js` | Express routes, autosave to `saves/autosave.json`, SSE broadcast, Markdown journal/report export, turn + report lock, rollback on failure |
 | `server/engine.js` | `createGame`, `applyActions` + `APPLY` handlers, name resolution, `scanMentions`, `advanceTime`, `checkGameOver`, `summarizeForLLM`, deltas, `snapshotInitial`. Scenario-agnostic |
-| `server/agents.js` | Scenario-parameterised prompts (`actionSpec`, `SAFETY`, the turn agents, the `effectsSystem` map-repair agent, report agent), JSON cleaners, `runTurn`, `generateReport` |
-| `server/historyClock.js` | The history clock: fires the scenario's `scriptedEvents` month by month after the Game Master, through `applyActions` (source `history_clock`). Skips sandbox games, player-actor events (hint instead) and events whose `requires` preconditions no longer match the board |
+| `server/agents.js` | Scenario-parameterised prompts (`actionSpec`, `SAFETY`, the turn agents, the `effectsSystem` map-repair agent, report agent), JSON cleaners, `runTurn`, `generateReport`. `realism` is `historical` \| `sandbox` \| `sandbox_plus`; `SAFETY` is omitted only for `sandbox_plus` |
+| `server/historyClock.js` | The history clock: fires the scenario's `scriptedEvents` month by month after the Game Master, through `applyActions` (source `history_clock`). Skips sandbox map events (lessons still fire), skips all scripted events in `sandbox_plus`, skips player-actor events (hint instead) and events whose `requires` preconditions no longer match the board |
 | `server/data/clocks/*.js` | Scripted-event packs (Europe and Asia, 1939–45): pure data — `id`, `date`, `kind` (`map`/`lesson`), `actors`, `requires`, `actions`, `blurb`, `hint`. The clock owns the great campaigns (Barbarossa, Pearl Harbor, VE/VJ Day); the Game Master may still adjust occupation on the player's own front with `occupy_territory` `delta` |
 | `server/report.js` | `computeMetrics` (deterministic) and `scoreFromGrades` (fixed weights, reproducible overall score) |
 | `server/llm.js` | `chatJSON(system, user)`: OpenAI-compatible call, JSON mode, loose parsing, one retry, timeout. Config from env |
@@ -80,7 +80,7 @@ Data contracts are in `docs/API.md` (state and journal shapes) and `docs/ACTIONS
 
 **Test without an LLM**: run with no key, or use Under the hood → Apply actions by hand, or `curl -X POST localhost:3000/api/actions -H 'content-type: application/json' -d '{"actions":[...]}'`.
 
-**The map "stops updating" after an accepted order**: the Game Master sometimes narrates a territorial change without emitting the action. `runTurn` detects this (`needsRepair()` in `server/agents.js`) and calls the small `effectsSystem()` repair agent, which returns only the missing actions. `scanMentions()` (in `server/engine.js`) also passes the order's territory/nation names to the Game Master up front. If the map still disagrees, the entry gets `mapWarning: true` and the player sees a toast. `tests/effects.test.js` covers this end to end.
+**The map "stops updating" after an accepted order**: the Game Master sometimes narrates a territorial change without emitting the action. `runTurn` first retries the Game Master once (`gmDiverges()`), then detects remaining gaps (`needsRepair()` in `server/agents.js`) and calls the small `effectsSystem()` repair agent, which returns only the missing actions. `scanMentions()` (in `server/engine.js`) also passes the order's territory/nation names to the Game Master up front. If the map still disagrees, the entry gets `mapWarning: true` and the player sees a toast. `tests/effects.test.js` covers this end to end.
 
 ## Known limitations / good next steps
 
