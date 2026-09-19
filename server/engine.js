@@ -165,6 +165,7 @@ export function migrateState(state) {
     }
   }
   if (!('advisors' in state)) state.advisors = null;
+  state.firedScriptedIds ||= [];
   return fixes;
 }
 

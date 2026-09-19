@@ -225,6 +225,11 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .reaction { border-left: 3px solid var(--edge); padding: 2px 0 2px 9px; margin: 6px 0; font-size: 13.5px; }
 .reaction b { font-weight: 700; }
 .reaction .tag { font-size: 11px; color: var(--ink-soft); }
+.meanwhile { margin: 8px 0; padding: 6px 10px; background: var(--paper-2-glass); border: 1px solid var(--rule); border-radius: 2px; }
+.meanwhile h4 { font: 700 12px/1 var(--ui); text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); margin: 0 0 4px; }
+.meanwhile p { font-size: 13px; margin: 3px 0; }
+.meanwhile .when { font-size: 11px; color: var(--ink-soft); margin-right: 4px; }
+.meanwhile-hint { font-style: italic; color: var(--ink-soft); }
 .intro { font: 15px/1.55 var(--prose); color: var(--ink-soft); }
 
 .order-form { border-top: 1px solid var(--rule); padding: 8px 10px 10px; background: var(--paper-2-glass); }

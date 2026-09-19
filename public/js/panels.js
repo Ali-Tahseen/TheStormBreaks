@@ -289,6 +289,18 @@ export function advisorsHTML(state, role = 'economy') {
 }
 
 // ---------- orders log ----------
+// The history clock's events for one turn. Events whose historical actor is
+// the player's own nation were left for the player to decide; they render as
+// a hint line instead of a map change.
+function meanwhileHTML(j) {
+  const list = j.meanwhile || [];
+  if (!list.length) return '';
+  const items = list.map(m => m.skippedReason
+    ? `<p class="meanwhile-hint">Historically this month, ${esc(m.hint || m.blurb)} Your staff waits for your order.</p>`
+    : `<p class="meanwhile-item"><span class="when">${esc(m.date)}</span> ${esc(m.blurb)}</p>`).join('');
+  return `<div class="meanwhile"><h4>Meanwhile</h4>${items}</div>`;
+}
+
 export function logHTML(state, { audio = false } = {}) {
   const n = state.nations[state.player];
   const intro = `<p class="intro">You lead ${esc(n.name)} in ${esc(fmtDate(state.events[0]?.date || state.date))}. ${
@@ -300,6 +312,7 @@ export function logHTML(state, { audio = false } = {}) {
       <h3>${audio ? `<button type="button" class="narrate" data-narrate="${j.turn}" aria-pressed="false" aria-label="Play headline and summary">Play</button>` : ''}${esc(j.headline)}<span class="feas ${esc(j.feasibility)}">${esc(j.feasibility)}</span></h3>
       ${j.feasibilityReason ? `<p class="reason">${esc(j.feasibilityReason)}</p>` : ''}
       ${String(j.narrative).split(/\n{2,}/).map(p => `<p>${esc(p)}</p>`).join('')}
+      ${meanwhileHTML(j)}
       ${(j.reactions || []).map(r => `
         <div class="reaction"><b>${esc(r.leader || r.country)}</b> <span class="tag">(${esc(state.nations[r.country]?.name || r.country)}, in-game dialogue)</span><br>${esc(r.statement)}</div>`).join('')}
     </div>`).join('');

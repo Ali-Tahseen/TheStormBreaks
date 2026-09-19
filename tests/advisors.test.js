@@ -128,7 +128,8 @@ await test('AI advisors run after the rivals, are cleaned, and cannot act', asyn
   assert.equal(entry.advisors.diplomacy.home, replies.advisors.diplomacy.home, 'valid fields are kept');
   assert.ok(entry.advisors.military.home.length > 10, 'missing advisor is filled from the offline briefing');
   assert.equal(entry.advisors.actions, undefined);
-  assert.equal(s.wars.length, warsBefore, 'advisors cannot declare war');
+  assert.ok(!s.wars.some(w => w.includes('UK') && w.includes('ITA')), 'advisors cannot declare war');
+  assert.ok(s.wars.length <= warsBefore, 'no new war appears; the history clock may end wars (Poland capitulates in September 1939)');
   assert.equal(s.nations.UK.indicators.citizen_support, SCENARIOS['ww2-1939'].nations.UK.indicators.citizen_support + 4);
   assertBriefing(entry.advisors, 'llm turn');
 });

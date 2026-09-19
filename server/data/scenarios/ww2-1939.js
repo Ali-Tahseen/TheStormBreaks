@@ -10,6 +10,8 @@
 
 import { TIMELINE } from '../timelines/ww2-1939.js';
 import { OPENING_ADVICE } from '../advisors/ww2-1939.js';
+import { EUROPE_1939 } from '../clocks/europe-1939.js';
+import { ASIA_1939 } from '../clocks/asia-1939.js';
 
 export const SCENARIO = {
   id: 'ww2-1939',
@@ -32,6 +34,10 @@ export const SCENARIO = {
   rivalGuidance: 'e.g. Britain and France honour guarantees; the USA stays officially neutral until attacked or provoked; Stalin is opportunistic and suspicious',
   teacherContext: 'preparing for HKDSE, IGCSE or AP history',
   timeline: TIMELINE,
+  // Scripted history fired by the history clock (server/historyClock.js) at
+  // the real dates. Both packs attach to both campaigns, so Europe is not
+  // frozen in a China game and Asia is not frozen in a USA game.
+  scriptedEvents: [...EUROPE_1939, ...ASIA_1939],
   // What each playable nation's advisors say before the first order.
   openingAdvice: OPENING_ADVICE,
   briefing: [

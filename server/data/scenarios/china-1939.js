@@ -11,6 +11,8 @@
 import { SCENARIO as WW2 } from './ww2-1939.js';
 import { TIMELINE } from '../timelines/china-1939.js';
 import { OPENING_ADVICE } from '../advisors/china-1939.js';
+import { EUROPE_1939 } from '../clocks/europe-1939.js';
+import { ASIA_1939 } from '../clocks/asia-1939.js';
 
 export const SCENARIO = {
   id: 'china-1939',
@@ -33,6 +35,9 @@ export const SCENARIO = {
   rivalGuidance: 'e.g. Japan presses for a quick victory and punishes guerrilla areas; the USA and Britain give aid to China but put Europe first; the Soviet Union avoids a two-front war; the CCP and Nationalists cooperate uneasily while preparing for the post-war struggle',
   teacherContext: 'preparing for HKDSE, IGCSE or AP history, with an emphasis on China’s War of Resistance and the Japanese occupation of Hong Kong',
   timeline: TIMELINE,
+  // Both clock packs attach here too (set explicitly, not spread from WW2):
+  // the European partition still happens while the player fights in China.
+  scriptedEvents: [...EUROPE_1939, ...ASIA_1939],
   // What each playable nation's advisors say before the first order.
   openingAdvice: OPENING_ADVICE,
 

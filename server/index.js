@@ -285,6 +285,15 @@ app.get('/api/journal.md', (req, res) => {
     lines.push(`## Turn ${j.turn}: ${j.dateBefore} → ${j.dateAfter}`, '');
     lines.push(`**My order:** ${j.order}`, '');
     lines.push(`**Outcome (${j.feasibility}):** ${j.headline}`, '', j.narrative, '');
+    if (j.meanwhile?.length) {
+      lines.push('**Meanwhile:**');
+      for (const m of j.meanwhile) {
+        lines.push(m.skippedReason
+          ? `- *Historically this month, ${m.hint || m.blurb} Your staff waits for your order.*`
+          : `- ${m.date}: ${m.blurb}`);
+      }
+      lines.push('');
+    }
     if (j.advisors) {
       lines.push(`**Advisors' briefing (${j.advisors.date}):**`);
       for (const [role, label] of [['economy', 'Economic advisor'], ['diplomacy', 'Diplomat'], ['military', 'Military advisor']]) {

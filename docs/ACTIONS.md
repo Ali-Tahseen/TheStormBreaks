@@ -123,8 +123,9 @@ Adds a milestone to the timeline strip under the map. Listed territories pulse o
 
 ## Who may do what
 
-- **Game Master**, **manual** and **MCP** actions can affect any nation.
+- **Game Master**, **manual** and **MCP** actions can affect any nation. The Game Master is told not to declare wars between nations it does not play or to occupy land outside the player's own front, but it MAY adjust occupation on the player's own front in response to an order using `occupy_territory` with `delta` (a counter-attack lowers the occupier's percent, a failed defense raises it) — adjusting the history clock rather than overwriting it.
 - **Rival Leaders** actions are rejected if the acting nation is the player's (so AI rivals can't lower your stats directly). The "acting nation" is `country`, `occupier`, `new_owner`, `attacker`, `a`, or `by`, depending on the type.
+- **History Clock** actions (source `history_clock`) come from the scenario's scripted events (`server/data/clocks/`): the great campaigns of 1939–45 fired at their real dates by `server/historyClock.js`. They use the same action types and validation as everything else — no new action types — and like rival leaders they cannot act for the player's nation: an event whose `actors` include the player is shown as a hint instead.
 ## Adding a new action type
 
 1. Add the name to `ACTION_TYPES` in `server/engine.js`.

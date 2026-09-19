@@ -27,6 +27,8 @@ Stack: Node.js ≥ 18.17 (ES modules), Express 5, dotenv, vanilla JS frontend wi
 | `server/index.js` | Express routes, autosave to `saves/autosave.json`, SSE broadcast, Markdown journal/report export, turn + report lock, rollback on failure |
 | `server/engine.js` | `createGame`, `applyActions` + `APPLY` handlers, name resolution, `advanceTime`, `checkGameOver`, `summarizeForLLM`, deltas, `snapshotInitial`. Scenario-agnostic |
 | `server/agents.js` | Scenario-parameterised prompts (`actionSpec`, `SAFETY`, three turn agents, report agent), JSON cleaners, `runTurn`, `generateReport` |
+| `server/historyClock.js` | The history clock: fires the scenario's `scriptedEvents` month by month after the Game Master, through `applyActions` (source `history_clock`). Skips sandbox games, player-actor events (hint instead) and events whose `requires` preconditions no longer match the board |
+| `server/data/clocks/*.js` | Scripted-event packs (Europe and Asia, 1939–45): pure data — `id`, `date`, `kind` (`map`/`lesson`), `actors`, `requires`, `actions`, `blurb`, `hint`. The clock owns the great campaigns (Barbarossa, Pearl Harbor, VE/VJ Day); the Game Master may still adjust occupation on the player's own front with `occupy_territory` `delta` |
 | `server/report.js` | `computeMetrics` (deterministic) and `scoreFromGrades` (fixed weights, reproducible overall score) |
 | `server/llm.js` | `chatJSON(system, user)`: OpenAI-compatible call, JSON mode, loose parsing, one retry, timeout. Config from env |
 | `server/mock.js` | Keyword-based stand-ins for the turn agents + `mockReport` + `mockAdvisors` (opening briefing from the scenario, then a data-driven briefing) |
@@ -76,7 +78,7 @@ Data contracts are in `docs/API.md` (state and journal shapes) and `docs/ACTIONS
 
 - 1939 borders are approximations (10–30 km). Not modelled: German Upper Silesia (shown Polish), Zaolzie (shown German), Estonian/Latvian districts now in Pskov oblast (shown Soviet), Aden (shown as Yemen), British Cameroons (shown French).
 - One game per server process (`let game` in `index.js`). For multi-student hosting, key games by a session id.
-- No scripted historical events fire automatically yet; the real timeline only informs prompts and lessons.
+- Scripted historical events fire automatically through the history clock (`server/historyClock.js`, packs in `server/data/clocks/`); the real timeline also informs prompts and lessons.
 - No teacher dashboard; journals and reports are exported per student as Markdown/JSON.
 - The UI chrome is English only; AI-generated text can be English or Chinese.
 - Two scenarios share `world-1939.json`. The registry and frontend support a different `mapFile` per scenario (the page reloads when it changes), but no second map has been built yet.

@@ -129,6 +129,15 @@ Returned by `POST /api/report` and stored on the state as `report`. The `metrics
   "feasibilityReason": "...",
   "headline": "...",
   "narrative": "...",
+  "meanwhile": [
+    {
+      "id": "warsaw_falls", "date": "1939-09-27", "title": "Warsaw falls",
+      "blurb": "...", "kind": "map | lesson",
+      "skippedReason": "player", "hint": "..."   // only when the event's historical
+                                                 // actor is the player's nation: no map
+                                                 // change, just the hint line
+    }
+  ],
   "reactions": [ { "country": "UK", "leader": "...", "statement": "...", "intent": "..." } ],
   "advisors": { /* the briefing written after this turn, same shape as state.advisors */ },
   "lesson": {

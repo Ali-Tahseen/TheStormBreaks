@@ -15,10 +15,11 @@
 // so the same pipeline drives any era.
 
 import {
-  applyActions, advanceTime, snapshotIndicators, computeDeltas, checkGameOver,
+  applyActions, snapshotIndicators, computeDeltas, checkGameOver,
   summarizeForLLM, formatDate, monthIndex, fromIndex, ACTION_TYPES,
   warsOf, relation, territoriesOf
 } from './engine.js';
+import { runClockSkip } from './historyClock.js';
 import { getScenario } from './data/scenarios/index.js';
 import { eventsNear, eventsBetween } from './data/timeline.js';
 import { chatJSON, llmConfigured } from './llm.js';
@@ -65,7 +66,7 @@ function gameMasterSystem(state, lang) {
   const scenario = getScenario(state.scenarioId);
   const realism = state.realism === 'sandbox'
     ? 'REALISM MODE: sandbox. The student is exploring "what if" ideas. Let bold orders mostly succeed, but still show realistic costs and reactions.'
-    : 'REALISM MODE: historical. Judge each order against the real capabilities of the time (distance, logistics, navies, industry, public opinion, politics). Impossible orders fail or partly succeed, and the narrative explains why — that explanation is the lesson.';
+    : 'REALISM MODE: historical. Judge each order against the real capabilities of the time (distance, logistics, navies, industry, public opinion, politics). Impossible orders fail or partly succeed, and the narrative explains why — that explanation is the lesson. Judge feasibility by the in-world state (relations, wars, industry, distance, blockade), not by whether the real event has reached its historical date. Aid, offensives or deals may arrive earlier and thinner, or fail for in-world reasons, but never refuse an order solely because "it has not happened yet."';
   return `You are the Game Master of an educational grand-strategy game set in ${scenario.era}, ${scenario.setting}. You are the game's rules engine.
 The student plays ${state.nations[state.player].name}. Each turn they type an order in plain language. You:
 1. Interpret the order (it may name several actions, or speak on behalf of other nations — treat it as the player's intention for the story).
@@ -74,6 +75,7 @@ The student plays ${state.nations[state.player].name}. Each turn they type an or
 4. Write what happened as a short, vivid history-book narrative (2-3 paragraphs, under 220 words total) that blends real history with the student's changes.
 5. Emit ACTIONS that make the game state match the narrative — every number you change must be explained by the story.
 6. The map only changes through actions. If your narrative says a nation surrendered, capitulated, was defeated or lost/gained land, you MUST emit the matching capitulate / occupy_territory / annex_territory / liberate_territory action. Never describe a map change without its action, and never invent an action the narrative does not explain.
+OFF-STAGE HISTORY: a history clock inside the game applies the great campaigns of the wider war (for example the Soviet entry into eastern Poland, the fall of France, Japan's move into Indochina) automatically at their real dates, after your resolution. Do not declare wars between nations you do not play, and do not occupy or annex territories outside your own front. You MAY change occupation on the player's own front in response to their order: a counter-attack lowers the occupier's percent, a failed defense raises it. Use occupy_territory with delta, never percent, so you adjust rather than overwrite the clock. Your story covers the player's order and its direct consequences.
 ${realism}
 ${actionSpec(scenario)}
 ${SAFETY}
@@ -110,6 +112,7 @@ Respond with JSON only:
 function teacherSystem(lang, scenario) {
   return `You are a friendly, precise history teacher for students aged 12-18 (e.g. ${scenario.teacherContext}). After each turn of a simulation of ${scenario.era} you write a short lesson comparing the student's alternate timeline with what REALLY happened in the same period.
 Rules: only state real history you are confident about; use the "real_events" list as your anchor. Explain cause and consequence. Be encouraging, never preachy. Keep every field brief (the whole lesson under 200 words).
+Some turns include "history_clock" and a "board_snapshot": the game itself applies the wider war's real events at their real dates (for example the partition of Poland or the fall of France). Treat those fired events as the historical baseline inside the game, not as the student's own choices, and use them with the board snapshot when writing "how_your_timeline_differs".
 ${SAFETY}
 Write text fields in ${LANGS[lang] || 'English'}. Keep JSON keys in English.
 Respond with JSON only:
@@ -148,6 +151,7 @@ Each advisor gives:
 - "abroad": ONE sentence on the situation OUTSIDE the country that matters for their field;
 - "advice": ONE short suggestion the leader could consider (an option, not an order).
 Each field is at most 28 words. Be concrete: name countries, places and numbers from the game data.
+Do not recommend an action the current game state makes infeasible. If a hint or a historical option is blocked by a war, pact, or blockade in the current state, name the blocker and suggest a feasible alternative instead.
 Ground the briefing in the game state you are given (it may already differ from real history) AND in the real historical context of this date (real_history_so_far): the pressures, shortages, alliances and fears that real officials of this nation faced. Advisors know only what a well-informed official could know at this date, never the future.
 Stay in character as professional advisors of this nation at this date, but state facts, not propaganda. Never recommend or praise atrocities, persecution, deportations, forced labour or attacks on civilians; if such policies are happening, an advisor may note their real consequences soberly.
 ${SAFETY}
@@ -305,6 +309,21 @@ function cleanLesson(j) {
 // ---------------- the turn pipeline ----------------
 const TERRITORY_ACTIONS = ['occupy_territory', 'liberate_territory', 'annex_territory', 'capitulate'];
 
+// A compact snapshot of the flashpoint territories, so the teacher can tell
+// clock-driven history (the wider war's script) from the student's own
+// deviations when writing how_your_timeline_differs.
+function boardSnapshot(state) {
+  const watch = ['Poland', 'Eastern Poland', 'France', 'North China', 'Southwest China', 'Hong Kong'];
+  const territories = {};
+  for (const name of watch) {
+    const t = state.territories[name];
+    if (!t) continue;
+    const occ = Object.entries(t.occupation).map(([k, v]) => `${k} ${v}%`).join(', ');
+    territories[name] = occ ? `${t.owner} (occupied: ${occ})` : t.owner;
+  }
+  return { wars: state.wars.map(([a, b]) => `${a} vs ${b}`), territories };
+}
+
 // Does the Game Master's prose claim a territorial or surrender change?
 function claimsMapChange(gm) {
   if (!['success', 'partial'].includes(gm.feasibility)) return false;
@@ -366,13 +385,27 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
   if (claimsMapChange(gm) && !gmResult.applied.some(a => TERRITORY_ACTIONS.includes(a.type))) {
     debug.agents.push({ agent: 'Game Master', warning: 'Narrative describes a territorial or surrender change but no such action was applied; the map may not match the story.' });
   }
-  const months = advanceTime(state, gm.time_advance_months);
+
+  // ---- the history clock: the wider war advances month by month ----
+  // Replaces a single advanceTime(): each elapsed month first fires the
+  // scripted events due in it (so September 1939 events stamp September),
+  // then moves one month forward.
+  const clock = runClockSkip(state, gm.time_advance_months);
+  const months = clock.months;
+  debug.agents.push({
+    agent: 'History Clock', ms: 0,
+    request: { months: gm.time_advance_months },
+    response: { fired: clock.fired, hints: clock.hints, skipped: clock.skipped }
+  });
   const dateAfter = { ...state.date };
 
   // ---- 2 + 3. Rival Leaders and History Teacher (parallel) ----
   const rivalsRequest = {
     task: 'react_as_ai_leaders',
-    what_just_happened: { order, headline: gm.headline, narrative: gm.narrative, feasibility: gm.feasibility },
+    what_just_happened: {
+      order, headline: gm.headline, narrative: gm.narrative, feasibility: gm.feasibility,
+      meanwhile: clock.fired.map(e => ({ date: e.date, title: e.title, blurb: e.blurb }))
+    },
     world: summarizeForLLM(state, { full: false })
   };
   const teacherRequest = {
@@ -381,6 +414,11 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
     student_nation: state.nations[state.player].name,
     student_order: order,
     game_outcome: { headline: gm.headline, narrative: gm.narrative, feasibility: gm.feasibility, reason: gm.feasibility_reason },
+    history_clock: {
+      fired: clock.fired.map(e => ({ date: e.date, title: e.title, blurb: e.blurb })),
+      hints: clock.hints.map(e => ({ date: e.date, title: e.title, hint: e.hint }))
+    },
+    board_snapshot: boardSnapshot(state),
     real_events: eventsBetween(scenario.timeline, dateBefore, dateAfter).concat(eventsNear(scenario.timeline, dateAfter, 0, 2))
       .filter((e, i, arr) => arr.findIndex(x => x.date === e.date) === i)
       .map(e => ({ date: e.date, title: e.title, summary: e.summary, concepts: e.concepts }))
@@ -418,6 +456,7 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
     lastTurn: {
       order, headline: gm.headline, feasibility: gm.feasibility, feasibility_reason: gm.feasibility_reason,
       narrative: gm.narrative.slice(0, 900),
+      meanwhile: clock.fired.map(e => ({ date: e.date, title: e.title })),
       reactions: rivals.reactions.map(r => ({ country: r.country, statement: r.statement, intent: r.intent }))
     }
   });
@@ -448,6 +487,7 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
     feasibilityReason: gm.feasibility_reason,
     headline: gm.headline,
     narrative: gm.narrative,
+    meanwhile: [...clock.fired, ...clock.hints],
     reactions: rivals.reactions,
     advisors,
     lesson,
@@ -461,8 +501,8 @@ export async function runTurn(state, order, { lang = 'en' } = {}) {
   state.version++;
   state.gameOver = checkGameOver(state);
 
-  debug.applied = [...gmResult.applied, ...rivalResult.applied];
-  debug.rejected = [...gmResult.rejected, ...rivalResult.rejected];
+  debug.applied = [...gmResult.applied, ...clock.applied, ...rivalResult.applied];
+  debug.rejected = [...gmResult.rejected, ...clock.rejected, ...rivalResult.rejected];
   state.lastTurnDebug = debug;
   return entry;
 }
