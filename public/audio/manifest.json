@@ -1,0 +1,64 @@
+{
+  "provider": "ElevenLabs",
+  "generated": "2026-09-19",
+  "note": "Baked assets. Do not generate these at runtime. Music and SFX are Git LFS objects.",
+  "sfx": [
+    {
+      "id": "ui_send",
+      "src": "/audio/sfx/ui_send.mp3",
+      "loop": false
+    },
+    {
+      "id": "time_tick",
+      "src": "/audio/sfx/time_tick.mp3",
+      "loop": false
+    },
+    {
+      "id": "map_pulse",
+      "src": "/audio/sfx/map_pulse.mp3",
+      "loop": false
+    },
+    {
+      "id": "event_war",
+      "src": "/audio/sfx/event_war.mp3",
+      "loop": false
+    },
+    {
+      "id": "event_diplomacy",
+      "src": "/audio/sfx/event_diplomacy.mp3",
+      "loop": false
+    },
+    {
+      "id": "event_economy",
+      "src": "/audio/sfx/event_economy.mp3",
+      "loop": false
+    },
+    {
+      "id": "event_politics",
+      "src": "/audio/sfx/event_politics.mp3",
+      "loop": false
+    },
+    {
+      "id": "event_other",
+      "src": "/audio/sfx/event_other.mp3",
+      "loop": false
+    },
+    {
+      "id": "campaign_end",
+      "src": "/audio/sfx/campaign_end.mp3",
+      "loop": false
+    }
+  ],
+  "music": [
+    {
+      "id": "peace",
+      "src": "/audio/music/peace.mp3",
+      "loop": true
+    },
+    {
+      "id": "wartime",
+      "src": "/audio/music/wartime.mp3",
+      "loop": true
+    }
+  ]
+}

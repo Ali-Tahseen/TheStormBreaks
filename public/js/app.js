@@ -4,13 +4,38 @@ import { api, listen } from './api.js';
 import { WorldMap } from './map.js';
 import { applyInitialCamera } from './camera.js';
 import { swatchStyle } from './flags.js';
+import { AudioEngine } from './audio.js';
 import {
-  esc, fmtDate, nationCard, indicatorTab, diplomacyTab, journalTab,
+  esc, fmtDate, nationCard, indicatorTab, diplomacyTab, journalTab, warsOf,
   logHTML, lessonHTML, hoodHTML, reportHTML
 } from './panels.js';
 
 const $ = (sel) => document.querySelector(sel);
 const app = { info: null, state: null, selected: null, tab: 'economy', busy: false, map: null, lessonTurn: null };
+const audio = new AudioEngine({ onChange: () => syncNarrationButtons() });
+
+function audioReady() {
+  return Boolean(app.info?.audio?.configured);
+}
+
+function syncMusic() {
+  if (!app.state) {
+    audio.setMusic(null);
+    return;
+  }
+  const atWar = warsOf(app.state, app.state.player).length > 0;
+  audio.setMusic(atWar ? 'wartime' : 'peace');
+}
+
+function eventSfx(events) {
+  const cats = new Set((events || []).map(e => e.category));
+  if (cats.has('war')) return 'event_war';
+  if (cats.has('diplomacy')) return 'event_diplomacy';
+  if (cats.has('economy')) return 'event_economy';
+  if (cats.has('politics')) return 'event_politics';
+  if ((events || []).length) return 'event_other';
+  return null;
+}
 
 // The scenario description for the game currently loaded (from /api/info).
 function activeScenario() {
@@ -33,6 +58,7 @@ async function boot() {
     visibleArea
   });
 
+  await audio.loadBank();
   wireUI();
   renderLegend();
 
@@ -59,6 +85,7 @@ async function boot() {
       app.state = await api.state();
       if (!prev || prev.id !== app.state.id) app.selected = app.state.player;
       renderAll({ changed: app.state.lastChangedTerritories });
+      syncMusic();
     } catch { /* no game */ }
   });
 }
@@ -108,8 +135,55 @@ function renderLedger() {
 
 function renderLog() {
   const log = $('#log');
-  log.innerHTML = logHTML(app.state) + (app.busy ? '<div class="working" id="working">The game master is deciding what happens…</div>' : '');
+  log.innerHTML = logHTML(app.state, { audio: audioReady() }) + (app.busy ? '<div class="working" id="working">The game master is deciding what happens…</div>' : '');
+  syncNarrationButtons();
   log.scrollTop = log.scrollHeight;
+}
+
+function syncNarrationButtons() {
+  const turn = audio.playingTurn;
+  document.querySelectorAll('[data-narrate]').forEach(btn => {
+    const on = Number(btn.dataset.narrate) === turn && audio.phase !== 'idle';
+    const loading = on && audio.phase === 'loading';
+    btn.textContent = loading ? 'Loading' : on ? 'Stop' : 'Play';
+    btn.setAttribute('aria-pressed', String(on));
+    btn.setAttribute('aria-label', loading ? 'Loading narration' : on ? 'Stop narration' : 'Play headline and narrative');
+  });
+}
+
+async function toggleNarration(turn) {
+  if (!audioReady()) return;
+  if (audio.playingTurn === turn && audio.phase !== 'idle') {
+    audio.stop();
+    return;
+  }
+  audio.enabled = true;
+  audio.playingTurn = turn;
+  audio.phase = 'loading';
+  syncNarrationButtons();
+  try {
+    await audio.arm();
+  } catch (err) {
+    audio.stop();
+    toast(err.message, true);
+    return;
+  }
+  await playNarration(turn);
+}
+
+async function playNarration(turn) {
+  const pending = audio.playQueue([
+    { kind: 'turn_headline', turn },
+    { kind: 'turn_narrative', turn }
+  ], { turn });
+  syncNarrationButtons();
+  try {
+    await pending;
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    syncNarrationButtons();
+  }
 }
 
 function renderSuggestions() {
@@ -160,6 +234,9 @@ function select(tag) {
 // ---------------- turn ----------------
 async function sendOrder(order) {
   if (!order.trim() || app.busy) return;
+  audio.stop();
+  audio.playSfx('ui_send');
+  syncNarrationButtons();
   app.busy = true;
   $('#send').disabled = true;
   $('#order').value = '';
@@ -177,6 +254,7 @@ async function sendOrder(order) {
   log.scrollTop = log.scrollHeight;
 
   const fromDate = { ...app.state.date };
+  const prevEvents = app.state.events.length;
   try {
     const { entry, state } = await api.turn(order);
     app.state = state;
@@ -184,6 +262,10 @@ async function sendOrder(order) {
     clearInterval(timer);
     await rollDate(fromDate, state.date);
     renderAll({ changed: entry.changedTerritories });
+    syncMusic();
+    const sting = eventSfx(state.events.slice(prevEvents));
+    if (sting) audio.playSfx(sting);
+    else if (entry.changedTerritories.length) audio.playSfx('map_pulse');
     openLesson(entry.turn);
     if (entry.changedTerritories.length) setTimeout(() => app.map.focus(entry.changedTerritories), 350);
     if (state.gameOver) setTimeout(showEnding, 1500);
@@ -207,6 +289,7 @@ async function rollDate(from, to) {
     i++;
     $('#date').textContent = fmtDate({ year: Math.floor(i / 12), month: (i % 12) + 1 });
     el.classList.remove('flip'); void el.offsetWidth; el.classList.add('flip');
+    audio.playSfx('time_tick');
     await new Promise(r => setTimeout(r, 260));
   }
 }
@@ -316,10 +399,12 @@ async function startGame(form) {
     // A scenario may use a different map file; reload so the map geometry matches.
     if (sc.mapFile && app.mapFile && sc.mapFile !== app.mapFile) { location.reload(); return; }
     app.selected = app.state.player;
+    audio.stop();
     $('#start').hidden = true;
     $('#ending').hidden = true;
     closeLesson();
     renderAll();
+    syncMusic();
     applyInitialCamera(app.map, app.state, { defaultView: sc.defaultView || 'world' });
     $('#order').focus();
   } catch (err) { toast(err.message, true); }
@@ -335,6 +420,7 @@ async function openHood() {
 async function showEnding() {
   const s = app.state;
   const p = s.nations[s.player];
+  audio.playSfx('campaign_end');
   const sheet = $('#ending .sheet');
   sheet.innerHTML = `
     <button class="close" data-close type="button" aria-label="Close">×</button>
@@ -368,6 +454,10 @@ function toast(msg, isError = false) {
 
 // ---------------- events ----------------
 function wireUI() {
+  $('#log').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-narrate]');
+    if (btn) toggleNarration(Number(btn.dataset.narrate));
+  });
   $('#order-form').addEventListener('submit', (e) => { e.preventDefault(); sendOrder($('#order').value); });
   $('#order').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendOrder($('#order').value); }
@@ -448,8 +538,10 @@ function wireUI() {
       try {
         app.state = await api.load(load.dataset.load);
         app.selected = app.state.player;
+        audio.stop();
         $('#start').hidden = true;
         renderAll();
+        syncMusic();
         applyInitialCamera(app.map, app.state, {
           defaultView: activeScenario().defaultView || 'world'
         });
@@ -480,10 +572,21 @@ function wireUI() {
   });
   $('#start').addEventListener('submit', (e) => { e.preventDefault(); startGame(e.target); });
   document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    if (!$('#hood').hidden) $('#hood').hidden = true;
-    else if (!$('#start').hidden && app.state) $('#start').hidden = true;
-    else if ($('#drawer').classList.contains('open')) closeLesson();
+    if (e.key === 'Escape') {
+      if (!$('#hood').hidden) $('#hood').hidden = true;
+      else if (!$('#start').hidden && app.state) $('#start').hidden = true;
+      else if ($('#drawer').classList.contains('open')) closeLesson();
+      return;
+    }
+    if (e.key === 'l' || e.key === 'L') {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (!audioReady()) return;
+      e.preventDefault();
+      audio.off();
+      syncNarrationButtons();
+      toast('Narration off');
+    }
   });
 }
 
