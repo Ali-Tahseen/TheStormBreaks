@@ -4,7 +4,8 @@ All endpoints are served by `server/index.js` on `http://localhost:3000` (or `PO
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| GET | `/api/info` | | AI config, scenario list + active scenario, indicator and faction definitions, action types, languages, `hasGame` |
+| GET | `/api/info` | | AI config, `audio` (`configured`, allowed `kinds`), scenario list + active scenario, indicator and faction definitions, action types, languages, `hasGame` |
+| GET | `/api/audio/clip` | query `turn`, `kind` | streamed `audio/mpeg` clip for that journal field |
 | GET | `/api/scenarios` | | Compact list of campaigns (id, title, briefing, playable nations, suggestions) |
 | GET | `/api/playable` | | Playable nations for the start screen; optional `?scenarioId=` |
 | GET | `/api/timeline` | | Real historical events for the active scenario; optional `?scenarioId=` |
@@ -28,6 +29,10 @@ All endpoints are served by `server/index.js` on `http://localhost:3000` (or `PO
 Values: `scenarioId` is `ww2-1939` or `china-1939`; `player` is a tag (`GER`, `CHN`, `CCP`, …); `realism` is `historical` or `sandbox`; `lang` is `en`, `zh-Hant` or `zh-Hans`.
 
 `/api/turn` returns **409** if a turn is already running and **502** if the AI call fails. A failed turn restores the state exactly as it was before.
+
+`GET /api/info` includes `audio: { configured, kinds }`. `configured` is true only when `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` are set. `kinds` is the speakable allowlist (`turn_headline`, `turn_reason` in v1). `turn_reason` is the journal `feasibilityReason` (the short summary under the headline), not the full `narrative`.
+
+`GET /api/audio/clip?turn=&kind=` synthesises (or returns a cached) MP3 for text taken from the current game journal. The browser never sends the spoken text and never sees the ElevenLabs key. The route streams `audio/mpeg`: a cache hit is `fs.createReadStream` with `Content-Length`; a cache miss calls ElevenLabs `POST /v1/text-to-speech/{voice_id}/stream`, waits for the first audio byte, then flushes `200` without `Content-Length` and tees chunks to `{hash}.part` and the response (rename to `{hash}.mp3` on success; discard an incomplete `.part` on failure or client abort). Errors before the first byte stay JSON (`{ "error": "..." }`). Returns **404** if there is no game or no journal entry for that turn, **400** if `kind` is not allowed or the text is empty, and **503** if TTS is not configured. Clips are generated only when this endpoint is called, not during `/api/turn`. Playback speed is not an API or `.env` setting: students use the **Speed** slider in the top bar (0.5–2, default 1.5). The browser stores `{ enabled, rate }` in `localStorage` under `storm-narration`. Speed is not part of the cache key.
 
 ## Game state shape
 

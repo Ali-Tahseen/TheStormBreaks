@@ -1,8 +1,21 @@
 // Client audio engine: narration (TTS), sfx, and looping music beds.
-// Cues are { kind, turn }. The engine fetches /api/audio/clip; it does not scrape the DOM.
-// Clips are fully downloaded (and cached on the server) before playback. Not streamed.
+// Narration cues are { kind, turn }. The engine plays /api/audio/clip on one HTML Audio element.
+// Progressive MP3: the element loads the HTTP stream; clips are not fully buffered first.
 
 const SILENCE = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+const STORAGE_KEY = 'storm-narration';
+const PREFS_V = 2;
+const RATE_MIN = 0.5;
+const RATE_MAX = 2;
+const RATE_STEP = 0.25;
+const DEFAULT_RATE = 1.5;
+
+export function clampRate(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return DEFAULT_RATE;
+  const stepped = Math.round(n / RATE_STEP) * RATE_STEP;
+  return Math.min(RATE_MAX, Math.max(RATE_MIN, stepped));
+}
 
 export class AudioEngine {
   constructor({ onChange } = {}) {
@@ -12,6 +25,7 @@ export class AudioEngine {
       music: { audio: null }
     };
     this.enabled = true;
+    this.rate = DEFAULT_RATE;
     this.playingTurn = null;
     this.phase = 'idle';
     this.onChange = onChange;
@@ -21,6 +35,8 @@ export class AudioEngine {
     this._musicVolume = 0.22;
     this._sfxVolume = 0.55;
     this._ctrl = null;
+    this._loadPrefs();
+    this._savePrefs();
   }
 
   async loadBank() {
@@ -98,42 +114,77 @@ export class AudioEngine {
   }
 
   _el() {
-    if (!this.channels.narration.audio) {
-      this.channels.narration.audio = new Audio();
+    return this._channel('narration');
+  }
+
+  _loadPrefs() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (typeof data.enabled === 'boolean') this.enabled = data.enabled;
+      this.rate = data.v === PREFS_V && data.rate != null ? clampRate(data.rate) : DEFAULT_RATE;
+    } catch {
+      this.enabled = true;
+      this.rate = DEFAULT_RATE;
     }
-    return this.channels.narration.audio;
+  }
+
+  _savePrefs() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        enabled: this.enabled,
+        rate: this.rate,
+        v: PREFS_V
+      }));
+    } catch { /* quota / private mode */ }
+  }
+
+  setEnabled(on) {
+    this.enabled = Boolean(on);
+    if (!this.enabled) this.stop();
+    this._savePrefs();
+    this._emit();
+  }
+
+  setRate(value) {
+    this.rate = clampRate(value);
+    const el = this.channels.narration.audio;
+    if (el) el.playbackRate = this.rate;
+    this._savePrefs();
+    this._emit();
   }
 
   async arm() {
+    this._abortPlay();
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) {
+      if (!this._ctx) this._ctx = new AC();
+      if (this._ctx.state === 'suspended') await this._ctx.resume();
+    }
     const el = this._el();
     el.loop = true;
+    el.muted = false;
+    el.playbackRate = 1;
     el.src = SILENCE;
     await el.play();
   }
 
   async playQueue(cues, { turn } = {}) {
-    this._abortFetch();
+    this._abortPlay();
     if (!this.enabled) return;
     const list = Array.isArray(cues) ? cues : [];
     const ctrl = new AbortController();
     this._ctrl = ctrl;
     this.playingTurn = turn ?? list[0]?.turn ?? null;
-    this.phase = 'loading';
     this.duck(true);
-    this._emit();
     try {
-      const blobs = [];
+      const el = this._el();
       for (const cue of list) {
         if (ctrl.signal.aborted) return;
-        blobs.push(await this._fetchBlob(cue, ctrl.signal));
-      }
-      this.phase = 'playing';
-      this._emit();
-      const el = this._el();
-      el.loop = false;
-      for (const blob of blobs) {
-        if (ctrl.signal.aborted) return;
-        await this._playBlob(el, blob, ctrl.signal);
+        this.phase = 'loading';
+        this._emit();
+        await this._playSrc(el, this.clipUrl(cue), ctrl.signal);
       }
     } catch (err) {
       if (err?.name === 'AbortError' || ctrl.signal.aborted) return;
@@ -150,7 +201,7 @@ export class AudioEngine {
   }
 
   stop() {
-    this._abortFetch();
+    this._abortPlay();
     this.playingTurn = null;
     this.phase = 'idle';
     this.duck(false);
@@ -165,32 +216,18 @@ export class AudioEngine {
   }
 
   off() {
-    this.enabled = false;
-    this.stop();
+    this.setEnabled(false);
   }
 
-  _abortFetch() {
+  _abortPlay() {
     const ctrl = this._ctrl;
     this._ctrl = null;
     if (ctrl) ctrl.abort();
   }
 
-  async _fetchBlob(cue, signal) {
-    const res = await fetch(this.clipUrl(cue), { signal });
-    if (!res.ok) {
-      const text = await res.text();
-      let data = null;
-      try { data = text ? JSON.parse(text) : null; } catch { data = null; }
-      throw new Error(data?.error || `Audio request failed (${res.status})`);
-    }
-    return res.blob();
-  }
-
-  _playBlob(el, blob, signal) {
-    const url = URL.createObjectURL(blob);
+  _playSrc(el, url, signal) {
     return new Promise((resolve, reject) => {
       if (signal.aborted) {
-        URL.revokeObjectURL(url);
         resolve();
         return;
       }
@@ -200,24 +237,55 @@ export class AudioEngine {
         settled = true;
         el.removeEventListener('ended', onEnded);
         el.removeEventListener('error', onError);
+        el.removeEventListener('playing', onPlaying);
         signal.removeEventListener('abort', onAbort);
-        URL.revokeObjectURL(url);
         if (err) reject(err);
         else resolve();
       };
       const onEnded = () => finish();
-      const onError = () => finish(new Error('The narration could not be played.'));
+      const onError = () => {
+        if (signal.aborted) finish();
+        else finish(new Error('The narration could not be played.'));
+      };
+      const onPlaying = () => {
+        el.playbackRate = this.rate;
+        if (this.phase !== 'playing') {
+          this.phase = 'playing';
+          this._emit();
+        }
+      };
       const onAbort = () => {
         el.pause();
         finish();
       };
       el.addEventListener('ended', onEnded);
       el.addEventListener('error', onError);
+      el.addEventListener('playing', onPlaying);
       signal.addEventListener('abort', onAbort);
+      el.loop = false;
       el.src = url;
-      el.play().catch((err) => {
-        if (err?.name === 'AbortError' || signal.aborted) finish();
-        else finish(err);
+      el.playbackRate = this.rate;
+      const started = () => {
+        el.muted = false;
+        el.playbackRate = this.rate;
+        this.phase = 'playing';
+        this._emit();
+      };
+      el.play().then(started).catch((err) => {
+        if (err?.name === 'AbortError' || signal.aborted) {
+          finish();
+          return;
+        }
+        if (err?.name !== 'NotAllowedError') {
+          finish(err);
+          return;
+        }
+        el.muted = true;
+        el.play().then(started).catch((err2) => {
+          el.muted = false;
+          if (err2?.name === 'AbortError' || signal.aborted) finish();
+          else finish(err2);
+        });
       });
     });
   }

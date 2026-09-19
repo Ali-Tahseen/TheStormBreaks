@@ -53,12 +53,44 @@
     {
       "id": "peace",
       "src": "/audio/music/peace.mp3",
-      "loop": true
+      "loop": true,
+      "scenario": "ww2-1939",
+      "mood": "peace"
     },
     {
       "id": "wartime",
       "src": "/audio/music/wartime.mp3",
-      "loop": true
+      "loop": true,
+      "scenario": "ww2-1939",
+      "mood": "wartime"
+    },
+    {
+      "id": "ww2_late",
+      "src": "/audio/music/ww2_late.mp3",
+      "loop": true,
+      "scenario": "ww2-1939",
+      "mood": "late"
+    },
+    {
+      "id": "china_peace",
+      "src": "/audio/music/china_peace.mp3",
+      "loop": true,
+      "scenario": "china-1939",
+      "mood": "peace"
+    },
+    {
+      "id": "china_wartime",
+      "src": "/audio/music/china_wartime.mp3",
+      "loop": true,
+      "scenario": "china-1939",
+      "mood": "wartime"
+    },
+    {
+      "id": "china_late",
+      "src": "/audio/music/china_late.mp3",
+      "loop": true,
+      "scenario": "china-1939",
+      "mood": "late"
     }
   ]
 }

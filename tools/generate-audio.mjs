@@ -102,9 +102,11 @@ const MUSIC = [
     id: 'peace',
     src: 'music/peace.mp3',
     loop: true,
+    scenario: 'ww2-1939',
+    mood: 'peace',
     music_length_ms: 32000,
     prompt: [
-      'Instrumental only. Quiet 1940s documentary underscore for a strategy map.',
+      'Instrumental only. Quiet 1940s documentary underscore for a strategy map of Europe.',
       'Low strings, muted brass, no choir, no drums, no vocals, no national anthem.',
       'Slow, 72 BPM, constant dynamics, no intro swell, no ending cadence.',
       'Designed to loop seamlessly forever. Classroom-safe, serious not grim, no horror drones.'
@@ -114,12 +116,70 @@ const MUSIC = [
     id: 'wartime',
     src: 'music/wartime.mp3',
     loop: true,
+    scenario: 'ww2-1939',
+    mood: 'wartime',
     music_length_ms: 32000,
     prompt: [
-      'Instrumental only. Tense but quiet wartime newsreel bed for a strategy map.',
+      'Instrumental only. Tense but quiet wartime newsreel bed for a European strategy map, 1939.',
       'Snare on brushes, low strings, spare muted trumpet, 96 BPM.',
       'Not a battle track: no explosions, no choir, no heroic fanfare, no anthem, no vocals.',
       'Constant energy, no fade in or out, last bar must join the first for an endless loop.'
+    ].join(' ')
+  },
+  {
+    id: 'ww2_late',
+    src: 'music/ww2_late.mp3',
+    loop: true,
+    scenario: 'ww2-1939',
+    mood: 'late',
+    music_length_ms: 32000,
+    prompt: [
+      'Instrumental only. Weary late-war European documentary bed for a strategy map, 1944-1945.',
+      'Thinner low strings, muted horns, sparse snare, slower than a 1939 newsreel, 84 BPM.',
+      'No victory parade, no anthem, no choir, no vocals, no explosions, no heroic fanfare.',
+      'Constant dynamics, no intro, no ending cadence, seamless endless loop. Classroom-safe.'
+    ].join(' ')
+  },
+  {
+    id: 'china_peace',
+    src: 'music/china_peace.mp3',
+    loop: true,
+    scenario: 'china-1939',
+    mood: 'peace',
+    music_length_ms: 32000,
+    prompt: [
+      'Instrumental only. Quiet 1939 documentary underscore for a map of China\'s interior.',
+      'Pentatonic chamber strings, gentle plucked zither, soft bamboo flute far in the background.',
+      'No drums, no choir, no vocals, no national anthem, no propaganda song, no military march.',
+      'Slow, 70 BPM, constant level, no intro swell, no cadence, seamless endless loop. Classroom-safe.'
+    ].join(' ')
+  },
+  {
+    id: 'china_wartime',
+    src: 'music/china_wartime.mp3',
+    loop: true,
+    scenario: 'china-1939',
+    mood: 'wartime',
+    music_length_ms: 32000,
+    prompt: [
+      'Instrumental only. Tense but quiet War of Resistance documentary bed for a China strategy map, 1939.',
+      'Low strings, spare percussion on wood, distant muted brass, 92 BPM.',
+      'Not a battle track and not a march: no gunfire, no choir, no vocals, no anthem, no Japanese military music.',
+      'Constant energy, no fade, last bar joins the first. Classroom-safe, serious, no glorification of violence.'
+    ].join(' ')
+  },
+  {
+    id: 'china_late',
+    src: 'music/china_late.mp3',
+    loop: true,
+    scenario: 'china-1939',
+    mood: 'late',
+    music_length_ms: 32000,
+    prompt: [
+      'Instrumental only. Late War of Resistance documentary bed, 1944-1945, weary but unresolved.',
+      'Thin pentatonic strings, sparse plucked notes, very little percussion, 80 BPM.',
+      'No anthem, no choir, no vocals, no victory fanfare, no military march, no gunfire.',
+      'Constant dynamics, no intro, no ending cadence, seamless endless loop. Classroom-safe.'
     ].join(' ')
   }
 ];
@@ -206,7 +266,9 @@ function writeManifest() {
     generated: new Date().toISOString().slice(0, 10),
     note: 'Baked assets. Do not generate these at runtime. Music and SFX are Git LFS objects.',
     sfx: SFX.map(({ id, src, loop }) => ({ id, src: `/audio/${src}`, loop })),
-    music: MUSIC.map(({ id, src, loop }) => ({ id, src: `/audio/${src}`, loop }))
+    music: MUSIC.map(({ id, src, loop, scenario, mood }) => ({
+      id, src: `/audio/${src}`, loop, scenario, mood
+    }))
   };
   fs.mkdirSync(OUT, { recursive: true });
   fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');

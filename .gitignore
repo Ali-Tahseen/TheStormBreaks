@@ -9,3 +9,4 @@ saves/*.json
 .DS_Store
 *.log
 tools/cache/
+cache/audio/

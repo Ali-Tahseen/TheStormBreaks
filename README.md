@@ -108,6 +108,14 @@ LLM_MODEL=qwen2.5:14b
 
 Small local models may produce weaker history or invalid actions. Invalid actions are rejected safely, so the game keeps working.
 
+## Narration
+
+With `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` in `.env`, each turn's headline and short summary (`feasibilityReason`) are read aloud after **Send order**. The full story is not spoken. You do not need to press **Play**; that button is only for replay or if the browser blocks sound.
+
+Speed is the **Speed** slider in the top bar (next to **Narration on / off**), from 0.5× to 2×. Default is 1.5×. The choice is stored in the browser (`localStorage` key `storm-narration`). It is not set in `.env` and is not sent to ElevenLabs.
+
+**L** toggles narration on and off. Off means no speech request is made.
+
 ## Campaigns and the after-action report
 
 Choose a campaign and a nation on the start screen. Both campaigns share the 1939 world map; the China campaign adds a **China** map view and the Chinese Communist Party as an AI ally (it owns its northwestern base area, with other base areas shown as occupation stripes).

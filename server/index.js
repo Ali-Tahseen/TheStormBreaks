@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { createGame, applyActions, ACTION_TYPES, formatDate, checkGameOver } from './engine.js';
 import { runTurn, generateReport } from './agents.js';
 import { llmInfo } from './llm.js';
+import { audioInfo, streamClip } from './audio.js';
 import { getScenario, listScenarios, scenarioSummary, DEFAULT_SCENARIO_ID } from './data/scenarios/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -72,6 +73,7 @@ app.get('/api/info', (req, res) => {
   const active = getScenario(game?.scenarioId || DEFAULT_SCENARIO_ID);
   res.json({
     llm: llmInfo(),
+    audio: audioInfo(),
     scenarios: listScenarios(),
     scenario: scenarioSummary(active),
     indicators: active.indicators,
@@ -101,6 +103,19 @@ app.get('/api/state', (req, res) => {
 });
 
 app.get('/api/debug', (req, res) => res.json(game?.lastTurnDebug || null));
+
+app.get('/api/audio/clip', async (req, res) => {
+  try {
+    await streamClip(game, { turn: req.query.turn, kind: req.query.kind }, req, res);
+  } catch (err) {
+    if (res.headersSent || res.destroyed || res.writableEnded) {
+      if (!res.writableEnded && !res.destroyed) res.end();
+      return;
+    }
+    const status = Number(err.status) || 502;
+    res.status(status).json({ error: err.message });
+  }
+});
 
 app.post('/api/new', (req, res) => {
   const { player, studentName, realism, lang, scenarioId } = req.body || {};
@@ -299,9 +314,13 @@ app.get('/api/events', (req, res) => {
 
 app.listen(PORT, () => {
   const info = llmInfo();
+  const audio = audioInfo();
   console.log(`\n  The Storm Breaks — running at http://localhost:${PORT}`);
   console.log(info.configured
     ? `  AI: ${info.model} via ${info.baseUrl}`
     : '  AI: offline demo mode (no API key). Copy .env.example to .env and add your DeepSeek key for full AI turns.');
+  console.log(audio.configured
+    ? '  Audio: ElevenLabs TTS ready'
+    : '  Audio: off (set ELEVENLABS_API_KEY and ELEVENLABS_VOICE_ID to enable narration).');
   console.log('');
 });

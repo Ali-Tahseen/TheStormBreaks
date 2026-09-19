@@ -12,10 +12,33 @@ import {
 
 const $ = (sel) => document.querySelector(sel);
 const app = { info: null, state: null, selected: null, tab: 'economy', busy: false, map: null, lessonTurn: null };
-const audio = new AudioEngine({ onChange: () => syncNarrationButtons() });
+const audio = new AudioEngine({
+  onChange: () => {
+    syncNarrationButtons();
+    syncNarrationControls();
+  }
+});
 
 function audioReady() {
   return Boolean(app.info?.audio?.configured);
+}
+
+function musicMood(state) {
+  if (!state) return 'peace';
+  const atWar = warsOf(state, state.player).length > 0;
+  if (atWar && state.date?.year >= 1944) return 'late';
+  return atWar ? 'wartime' : 'peace';
+}
+
+function pickMusicId(scenarioId, mood) {
+  const list = audio.manifest?.music || [];
+  const tagged = list.find(c => c.scenario === scenarioId && c.mood === mood);
+  if (tagged) return tagged.id;
+  if (mood === 'late') {
+    const war = list.find(c => c.scenario === scenarioId && c.mood === 'wartime');
+    if (war) return war.id;
+  }
+  return mood === 'peace' ? 'peace' : 'wartime';
 }
 
 function syncMusic() {
@@ -23,8 +46,11 @@ function syncMusic() {
     audio.setMusic(null);
     return;
   }
-  const atWar = warsOf(app.state, app.state.player).length > 0;
-  audio.setMusic(atWar ? 'wartime' : 'peace');
+  audio.setMusic(pickMusicId(app.state.scenarioId, musicMood(app.state)));
+}
+
+function previewScenarioMusic(scenarioId) {
+  audio.setMusic(pickMusicId(scenarioId, 'peace'));
 }
 
 function eventSfx(events) {
@@ -51,6 +77,7 @@ async function boot() {
   app.info = info;
   app.mapFile = mapFile;
   $('#ai-mode').textContent = info.llm.configured ? `AI: ${info.llm.model}` : 'Offline demo mode';
+  syncNarrationControls();
 
   app.map = new WorldMap($('#map'), topo, {
     onSelect: (tag) => select(tag),
@@ -135,7 +162,7 @@ function renderLedger() {
 
 function renderLog() {
   const log = $('#log');
-  log.innerHTML = logHTML(app.state, { audio: audioReady() }) + (app.busy ? '<div class="working" id="working">The game master is deciding what happens…</div>' : '');
+  log.innerHTML = logHTML(app.state, { audio: audioReady() && audio.enabled }) + (app.busy ? '<div class="working" id="working">The game master is deciding what happens…</div>' : '');
   syncNarrationButtons();
   log.scrollTop = log.scrollHeight;
 }
@@ -147,17 +174,60 @@ function syncNarrationButtons() {
     const loading = on && audio.phase === 'loading';
     btn.textContent = loading ? 'Loading' : on ? 'Stop' : 'Play';
     btn.setAttribute('aria-pressed', String(on));
-    btn.setAttribute('aria-label', loading ? 'Loading narration' : on ? 'Stop narration' : 'Play headline and narrative');
+    btn.setAttribute('aria-label', loading ? 'Loading narration' : on ? 'Stop narration' : 'Play headline and summary');
   });
 }
 
-async function toggleNarration(turn) {
+function formatRate(rate) {
+  const n = Number(rate);
+  if (!Number.isFinite(n)) return '1×';
+  const shown = Number.isInteger(n) ? String(n) : String(n);
+  return `${shown}×`;
+}
+
+function syncNarrationControls() {
+  const box = $('#narration-controls');
+  const btn = $('#narration-toggle');
+  const slider = $('#narration-rate');
+  const label = $('#narration-rate-label');
+  if (!box || !btn) return;
+  const ready = audioReady();
+  box.hidden = !ready;
+  if (!ready) return;
+  btn.setAttribute('aria-pressed', String(audio.enabled));
+  btn.textContent = audio.enabled ? 'Narration on' : 'Narration off';
+  if (slider) slider.value = String(audio.rate);
+  if (label) label.textContent = formatRate(audio.rate);
+}
+
+function refreshLogAudioButtons() {
+  if (!app.state) return;
+  if (app.busy) {
+    if (!audio.enabled) {
+      document.querySelectorAll('[data-narrate]').forEach(btn => btn.remove());
+    }
+    return;
+  }
+  renderLog();
+}
+
+function toggleNarrationPref() {
   if (!audioReady()) return;
+  const next = !audio.enabled;
+  audio.setEnabled(next);
+  if (next) audio.arm().catch(() => {});
+  refreshLogAudioButtons();
+  syncNarrationControls();
+  toast(next ? 'Narration on' : 'Narration off');
+}
+
+async function toggleNarration(turn) {
+  if (!audioReady() || !audio.enabled) return;
   if (audio.playingTurn === turn && audio.phase !== 'idle') {
     audio.stop();
     return;
   }
-  audio.enabled = true;
+  audio.stop();
   audio.playingTurn = turn;
   audio.phase = 'loading';
   syncNarrationButtons();
@@ -172,10 +242,12 @@ async function toggleNarration(turn) {
 }
 
 async function playNarration(turn) {
-  const pending = audio.playQueue([
-    { kind: 'turn_headline', turn },
-    { kind: 'turn_narrative', turn }
-  ], { turn });
+  const entry = app.state?.journal.find(j => j.turn === turn);
+  const cues = [{ kind: 'turn_headline', turn }];
+  if (String(entry?.feasibilityReason || '').trim()) {
+    cues.push({ kind: 'turn_reason', turn });
+  }
+  const pending = audio.playQueue(cues, { turn });
   syncNarrationButtons();
   try {
     await pending;
@@ -234,7 +306,13 @@ function select(tag) {
 // ---------------- turn ----------------
 async function sendOrder(order) {
   if (!order.trim() || app.busy) return;
-  audio.stop();
+  if (audioReady() && audio.enabled) {
+    try {
+      await audio.arm();
+    } catch { /* ignore */ }
+  } else {
+    audio.stop();
+  }
   audio.playSfx('ui_send');
   syncNarrationButtons();
   app.busy = true;
@@ -260,6 +338,9 @@ async function sendOrder(order) {
     app.state = state;
     app.busy = false;
     clearInterval(timer);
+    if (audioReady() && audio.enabled) {
+      playNarration(entry.turn);
+    }
     await rollDate(fromDate, state.date);
     renderAll({ changed: entry.changedTerritories });
     syncMusic();
@@ -272,6 +353,7 @@ async function sendOrder(order) {
   } catch (err) {
     app.busy = false;
     clearInterval(timer);
+    audio.stop();
     $('#order').value = order;
     renderAll();
     toast(err.message, true);
@@ -369,6 +451,7 @@ async function openStart() {
   sheet.innerHTML = startSheetHTML(selected, saves);
   $('#start').hidden = false;
   wireStartSheet(saves);
+  previewScenarioMusic(selected);
   sheet.querySelector('input[name=player]')?.focus();
 }
 
@@ -381,6 +464,7 @@ function wireStartSheet(saves) {
       studentName: fd.get('studentName'), realism: fd.get('realism'), lang: fd.get('lang')
     });
     wireStartSheet(saves);
+    previewScenarioMusic(r.value);
   }));
 }
 
@@ -458,6 +542,11 @@ function wireUI() {
     const btn = e.target.closest('[data-narrate]');
     if (btn) toggleNarration(Number(btn.dataset.narrate));
   });
+  $('#narration-toggle').addEventListener('click', () => toggleNarrationPref());
+  $('#narration-rate').addEventListener('input', (e) => {
+    audio.setRate(e.target.value);
+    syncNarrationControls();
+  });
   $('#order-form').addEventListener('submit', (e) => { e.preventDefault(); sendOrder($('#order').value); });
   $('#order').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendOrder($('#order').value); }
@@ -530,8 +619,14 @@ function wireUI() {
   // Modals: close buttons, start form, loading saves, manual actions
   document.addEventListener('click', async (e) => {
     const overlay = e.target.closest('.overlay');
-    if (e.target.closest('[data-close]') && overlay && app.state) overlay.hidden = true;
-    if (e.target.classList.contains('overlay') && app.state) e.target.hidden = true;
+    if (e.target.closest('[data-close]') && overlay && app.state) {
+      overlay.hidden = true;
+      if (overlay.id === 'start') syncMusic();
+    }
+    if (e.target.classList.contains('overlay') && app.state) {
+      e.target.hidden = true;
+      if (e.target.id === 'start') syncMusic();
+    }
     if (e.target.closest('[data-newgame]')) { $('#ending').hidden = true; openStart(); }
     const load = e.target.closest('[data-load]');
     if (load) {
@@ -583,9 +678,7 @@ function wireUI() {
       if (e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
       if (!audioReady()) return;
       e.preventDefault();
-      audio.off();
-      syncNarrationButtons();
-      toast('Narration off');
+      toggleNarrationPref();
     }
   });
 }

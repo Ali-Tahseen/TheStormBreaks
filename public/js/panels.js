@@ -92,15 +92,15 @@ export function journalTab(state) {
 }
 
 // ---------- orders log ----------
-export function logHTML(state) {
+export function logHTML(state, { audio = false } = {}) {
   const n = state.nations[state.player];
   const intro = `<p class="intro">You lead ${esc(n.name)} in ${esc(fmtDate(state.events[0]?.date || state.date))}. ${
     state.journal.length ? '' : 'Type an order in plain words: a policy, a treaty, a military plan, a speech. The AI game master decides what happens and how much time passes.'}</p>`;
   const turns = state.journal.slice(-15).map(j => `
     <div class="decree"><span class="who">${esc(n.leader)} orders, ${esc(j.dateBefore)}</span>${esc(j.order)}</div>
     <div class="skip">${j.monthsPassed} ${j.monthsPassed === 1 ? 'month passes' : 'months pass'}, to ${esc(j.dateAfter)}</div>
-    <div class="outcome">
-      <h3>${esc(j.headline)}<span class="feas ${esc(j.feasibility)}">${esc(j.feasibility)}</span></h3>
+    <div class="outcome" data-turn="${j.turn}">
+      <h3>${audio ? `<button type="button" class="narrate" data-narrate="${j.turn}" aria-pressed="false" aria-label="Play headline and summary">Play</button>` : ''}${esc(j.headline)}<span class="feas ${esc(j.feasibility)}">${esc(j.feasibility)}</span></h3>
       ${j.feasibilityReason ? `<p class="reason">${esc(j.feasibilityReason)}</p>` : ''}
       ${String(j.narrative).split(/\n{2,}/).map(p => `<p>${esc(p)}</p>`).join('')}
       ${j.advisorNotes?.length ? `<ul class="notes">${j.advisorNotes.map(a => {

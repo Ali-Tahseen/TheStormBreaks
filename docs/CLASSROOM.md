@@ -37,6 +37,8 @@ The lessons end with an "exam skill" tip, and the start date sits inside the Con
 - Leader dialogue is invented in-game speech, not real quotations.
 - The game will not let players commit atrocities. If asked, it explains the real history instead.
 
+If ElevenLabs is configured, the headline and short summary play automatically after each order. The full narrative is not spoken. Students can change how fast it is read with the **Speed** slider in the top bar (0.5×–2×, default 1.5×). **Narration off** (or the **L** key) stops the requests.
+
 ## Setup options
 
 - **Each student's computer:** install Node.js, then `npm install` and `npm start` (see README). Add an API key to `.env`, or use offline demo mode.
