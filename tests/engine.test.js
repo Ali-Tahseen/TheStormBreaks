@@ -127,6 +127,52 @@ test('a rejected capitulate changes nothing', () => {
   assert.equal(s.territories['France'].occupation.GER, undefined);
 });
 
+test('rename changes map labels for this game only', () => {
+  const s = createGame({ player: 'GER' }, names);
+  const r = applyActions(s, [
+    { type: 'rename', territory: 'Poland', name: 'General Government' },
+    { type: 'rename', country: 'GER', name: 'Greater German Reich' }
+  ]);
+  assert.equal(r.rejected.length, 0);
+  assert.equal(s.territories['Poland'].displayName, 'General Government');
+  assert.equal(s.nations.GER.name, 'Greater German Reich');
+  assert.equal(s.nations.GER.originalName, 'Germany');
+  assert.equal(s.territories['Poland'].owner, 'POL', 'rename does not change ownership');
+  assert.equal(resolveTerritory(s, 'General Government'), 'Poland');
+  assert.equal(resolveTerritory(s, 'Poland'), 'Poland');
+  assert.equal(resolveNation(s, 'Greater German Reich'), 'GER');
+  assert.equal(resolveNation(s, 'Germany'), 'GER');
+  applyActions(s, [{ type: 'occupy_territory', territory: 'General Government', occupier: 'GER', delta: 10 }]);
+  assert.equal(s.territories['Poland'].occupation.GER, 10);
+  applyActions(s, [
+    { type: 'rename', territory: 'Poland', name: 'Poland' },
+    { type: 'rename', country: 'GER', name: 'Germany' }
+  ]);
+  assert.equal(s.territories['Poland'].displayName, undefined);
+  assert.equal(s.nations.GER.name, 'Germany');
+  assert.equal(s.nations.GER.originalName, undefined);
+});
+
+test('rivals cannot rename the player nation or its land', () => {
+  const s = createGame({ player: 'GER' }, names);
+  const r = applyActions(s, [
+    { type: 'rename', country: 'GER', name: 'Not Germany' },
+    { type: 'rename', territory: 'Germany', name: 'Ostland' }
+  ], { source: 'rival_leaders', forbidActor: 'GER' });
+  assert.equal(r.rejected.length, 2);
+  assert.equal(s.nations.GER.name, 'Germany');
+  assert.equal(s.territories['Germany'].displayName, undefined);
+});
+
+test('offline game master understands invade-and-rename', () => {
+  const s = createGame({ player: 'GER', realism: 'sandbox' }, names);
+  const gm = mockGameMaster(s, 'Invade Poland and rename it to the General Government');
+  assert.ok(gm.actions.some(a => a.type === 'rename' && a.territory === 'Poland' && /general government/i.test(a.name)));
+  const r = applyActions(s, gm.actions);
+  assert.equal(r.rejected.length, 0);
+  assert.equal(s.territories['Poland'].displayName, 'General Government');
+});
+
 test('time advances and stops at the scenario end date', () => {
   const s = createGame({ player: 'GER' }, names);
   advanceTime(s, 4);

@@ -15,7 +15,7 @@ import { getScenario, DEFAULT_SCENARIO_ID } from './data/scenarios/index.js';
 export const ACTION_TYPES = [
   'change_indicator', 'set_indicator', 'occupy_territory', 'liberate_territory', 'annex_territory',
   'capitulate', 'declare_war', 'make_peace', 'join_faction', 'leave_faction', 'change_relation',
-  'set_leader', 'add_event'
+  'set_leader', 'rename', 'add_event'
 ];
 
 const MAX_STEP = 30;          // biggest change to a 0–100 indicator in one action
@@ -181,6 +181,7 @@ export function resolveNation(state, ref) {
   if (sc.aliases[n] && state.nations[sc.aliases[n]]) return sc.aliases[n];
   for (const nat of Object.values(state.nations)) {
     if (norm(nat.name) === n) return nat.tag;
+    if (nat.originalName && norm(nat.originalName) === n) return nat.tag;
   }
   // A territory name refers to its owner ("Czechia" -> GER)
   const t = resolveTerritory(state, raw);
@@ -196,9 +197,12 @@ export function resolveTerritory(state, ref) {
   for (const name of Object.keys(state.territories)) if (norm(name) === n) return name;
   const sc = getScenario(state.scenarioId);
   if (sc.territoryAliases[n] && state.territories[sc.territoryAliases[n]]) return sc.territoryAliases[n];
+  for (const [name, t] of Object.entries(state.territories)) {
+    if (t.displayName && norm(t.displayName) === n) return name;
+  }
   // A nation name refers to its home territory ("Soviet Union" -> Russia)
   for (const nat of Object.values(state.nations)) {
-    if (norm(nat.name) === n || nat.tag === raw.toUpperCase()) return nat.home;
+    if (norm(nat.name) === n || (nat.originalName && norm(nat.originalName) === n) || nat.tag === raw.toUpperCase()) return nat.home;
   }
   return null;
 }
@@ -220,14 +224,24 @@ export function scanMentions(state, text) {
   const nations = [], territories = [];
   const nationNames = new Map();
   for (const [alias, tag] of Object.entries(scenario.aliases)) nationNames.set(alias, tag);
-  for (const n of Object.values(state.nations)) if (!n.minor) nationNames.set(n.name.toLowerCase(), n.tag);
+  for (const n of Object.values(state.nations)) {
+    if (n.minor) continue;
+    nationNames.set(n.name.toLowerCase(), n.tag);
+    if (n.originalName) nationNames.set(n.originalName.toLowerCase(), n.tag);
+  }
   for (const [alias, tag] of nationNames) {
     const m = lower.match(new RegExp(`[^a-z]${reEsc(alias)}[^a-z]`));
     if (m) nations.push({ tag, pos: m.index, name: alias });
   }
   const terrNames = new Map();
-  for (const name of Object.keys(state.territories)) terrNames.set(name.toLowerCase(), name);
   for (const [alias, name] of Object.entries(scenario.territoryAliases)) terrNames.set(alias, name);
+  for (const [name, t] of Object.entries(state.territories)) {
+    if (t.displayName) {
+      const k = t.displayName.toLowerCase();
+      if (!terrNames.has(k)) terrNames.set(k, name);
+    }
+  }
+  for (const name of Object.keys(state.territories)) terrNames.set(name.toLowerCase(), name);
   for (const [lname, name] of terrNames) {
     const m = lower.match(new RegExp(`[^a-z]${reEsc(lname)}[^a-z]`));
     if (m) territories.push({ name, pos: m.index });
@@ -247,7 +261,7 @@ export const warsOf = (state, tag) => state.wars.filter(w => w.includes(tag)).ma
 export const territoriesOf = (state, tag) => Object.entries(state.territories).filter(([, t]) => t.owner === tag).map(([n]) => n);
 export const relation = (state, a, b) => state.relations[relKey(a, b)] ?? 0;
 
-function actorsOf(a) {
+function actorsOf(a, state) {
   switch (a.type) {
     case 'change_indicator': case 'set_indicator': case 'join_faction': case 'leave_faction': case 'set_leader':
       return [a.country];
@@ -258,6 +272,16 @@ function actorsOf(a) {
     case 'declare_war': return [a.attacker];
     case 'make_peace': return [a.a, a.b];
     case 'change_relation': return [a.a];
+    case 'rename': {
+      const out = [];
+      if (a.country) out.push(a.country);
+      if (a.by) out.push(a.by);
+      if (a.territory && state) {
+        const t = resolveTerritory(state, a.territory);
+        if (t) out.push(state.territories[t].owner);
+      }
+      return out;
+    }
     default: return [];
   }
 }
@@ -281,7 +305,7 @@ export function applyActions(state, actions, ctx = {}) {
       if (!ACTION_TYPES.includes(action.type)) throw new Error(`unknown action type "${action.type}"`);
 
       if (ctx.forbidActor) {
-        const actors = actorsOf(action).map(r => resolveNation(state, r));
+        const actors = actorsOf(action, state).map(r => resolveNation(state, r));
         if (actors.includes(ctx.forbidActor)) throw new Error(`${ctx.source} may not act on behalf of the player's nation`);
       }
 
@@ -517,6 +541,35 @@ const APPLY = {
     return `${state.nations[tag].name}: ${before} replaced by ${leader}`;
   },
 
+  rename(state, a) {
+    const name = String(a.name || '').trim().slice(0, 80);
+    if (!name) throw new Error('new name missing');
+    if (a.territory) {
+      const t = needTerritory(state, a.territory);
+      const terr = state.territories[t];
+      const before = terr.displayName || t;
+      if (norm(name) === norm(t)) delete terr.displayName;
+      else terr.displayName = name;
+      markChanged(state, t);
+      return `${t} is now labelled ${terr.displayName || t} on the map (was ${before})`;
+    }
+    if (a.country) {
+      const tag = needNation(state, a.country, 'country');
+      const nat = state.nations[tag];
+      const before = nat.name;
+      if (!nat.originalName) nat.originalName = before;
+      if (norm(name) === norm(nat.originalName)) {
+        nat.name = nat.originalName;
+        delete nat.originalName;
+      } else {
+        nat.name = name;
+      }
+      if (nat.home && state.territories[nat.home]) markChanged(state, nat.home);
+      return `${before} is now called ${nat.name}`;
+    }
+    throw new Error('rename needs "territory" or "country"');
+  },
+
   add_event(state, a) {
     const title = String(a.title || '').trim().slice(0, 100);
     if (!title) throw new Error('event title missing');
@@ -574,7 +627,8 @@ export function summarizeForLLM(state, { full = true } = {}) {
   const nations = Object.values(state.nations)
     .filter(n => !n.minor || n.capitulated || warsOf(state, n.tag).length || n.faction)
     .map(n => ({
-      tag: n.tag, name: n.name, leader: n.leader, ideology: n.ideology, faction: n.faction,
+      tag: n.tag, name: n.name, original_name: n.originalName || undefined,
+      leader: n.leader, ideology: n.ideology, faction: n.faction,
       capitulated: n.capitulated || undefined,
       at_war_with: warsOf(state, n.tag),
       indicators: n.indicators
@@ -585,7 +639,8 @@ export function summarizeForLLM(state, { full = true } = {}) {
   const territories = full
     ? Object.entries(state.territories).map(([name, t]) => {
         const occ = Object.entries(t.occupation).map(([k, v]) => `${k} ${v}%`).join(', ');
-        return occ ? `${name}: ${t.owner} (occupied: ${occ})` : `${name}: ${t.owner}`;
+        const labelled = t.displayName && t.displayName !== name ? ` [labelled ${t.displayName}]` : '';
+        return occ ? `${name}${labelled}: ${t.owner} (occupied: ${occ})` : `${name}${labelled}: ${t.owner}`;
       })
     : undefined;
 

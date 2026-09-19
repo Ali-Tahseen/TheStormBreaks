@@ -6,7 +6,7 @@
 // real agents, so everything downstream is identical.
 
 import { getScenario } from './data/scenarios/index.js';
-import { resolveNation, atWar, warsOf, formatDate, relation, territoriesOf, scanMentions } from './engine.js';
+import { resolveNation, resolveTerritory, atWar, warsOf, formatDate, relation, territoriesOf, scanMentions } from './engine.js';
 import { eventsBetween, eventsNear } from './data/timeline.js';
 
 export function mockGameMaster(state, order) {
@@ -18,6 +18,7 @@ export function mockGameMaster(state, order) {
   let months = 1, feasibility = 'success', reason = 'Offline demo mode applies simple rules.';
   let headline = `${P.name} issues new orders`;
   const story = [];
+  let invaded = null;
 
   const verbAt = text.search(/\b(take|taking|takes|invade|invades|occupy|occupies|seize|capture|conquer|attack|attacks|push into|advance into)\b/);
   const pctMatch = text.match(/(\d{1,3})\s*(%|percent)/);
@@ -79,6 +80,7 @@ export function mockGameMaster(state, order) {
       actions.push({ type: 'change_indicator', country: actor, indicator: 'war_support', delta: -2, reason: 'Casualty reports' });
       actions.push({ type: 'change_indicator', country: owner, indicator: 'stability', delta: -6, reason: 'Invasion' });
       actions.push({ type: 'change_relation', a: owner, b: actor, delta: -30 });
+      invaded = target.name;
     }
   } else if (/declare war/.test(text) && nations.length) {
     const t = nations.find(n => n.tag !== player);
@@ -131,6 +133,34 @@ export function mockGameMaster(state, order) {
     actions.push({ type: 'add_event', title: `${P.name} joins the ${f}`, description: 'A new alignment reshapes the war.', category: 'diplomacy', territories: [P.home] });
     story.push(`${P.name} formally aligned itself with the ${f}.`);
     headline = `${P.name} joins the ${f}`;
+  }
+
+  if (/\brename\b/i.test(order)) {
+    const named = order.match(/\brename\s+(?!it\b|this\b|them\b)(.+?)\s+to\s+["']?([^"'.,]+)/i);
+    const it = order.match(/\brename\s+(?:it|this|them)\s+(?:to|as)\s+["']?([^"'.,]+)/i)
+      || (!named && order.match(/\brename\s+(?:to|as)\s+["']?([^"'.,]+)/i));
+    const clean = (s) => String(s || '').trim().replace(/^the\s+/i, '').replace(/["']+$/g, '').trim().slice(0, 80);
+    let newName = '', targetRef = '';
+    if (named) {
+      targetRef = clean(named[1]);
+      newName = clean(named[2]);
+    } else if (it) {
+      newName = clean(it[1]);
+      targetRef = invaded || territories[0]?.name || '';
+    }
+    if (newName && targetRef) {
+      const terr = resolveTerritory(state, targetRef);
+      const nat = resolveNation(state, targetRef);
+      if (terr) {
+        actions.push({ type: 'rename', territory: terr, name: newName, reason: 'Proclaimed new name' });
+        story.push(`${terr} was renamed ${newName} on the map.`);
+      }
+      if (nat && (!terr || state.nations[nat].home === terr)) {
+        actions.push({ type: 'rename', country: nat, name: newName, reason: 'Proclaimed new name' });
+        if (!terr) story.push(`${state.nations[nat].originalName || state.nations[nat].name} is now known as ${newName}.`);
+      }
+      if ((terr || nat) && !invaded) headline = `${newName} proclaimed`;
+    }
   }
 
   if (!actions.length) {

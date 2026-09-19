@@ -134,8 +134,11 @@ export class WorldMap {
       this.gSel.attr('d', mine.length ? this.path(topojson.merge(this.topo, mine)) : null);
     } else this.gSel.attr('d', null);
 
-    // Labels: every nation that still owns land, at its home (or largest) territory
+    // Labels: every nation that still owns land, at its home (or largest) territory.
+    // A session-only territory displayName replaces the nation label on that
+    // shape, and is also drawn on unnamed (non-home) territories.
     const labels = [];
+    const labelledTerr = new Set();
     for (const n of Object.values(N)) {
       if (n.capitulated) continue;
       let terr = T[n.home]?.owner === n.tag ? n.home : null;
@@ -150,7 +153,15 @@ export class WorldMap {
       if (!terr || !this.byName.has(terr)) continue;
       const { c, a } = this.labelPoint(this.byName.get(terr));
       if (!isFinite(c[0])) continue;
-      labels.push({ tag: n.tag, name: n.name, x: c[0], y: c[1], a, minor: n.minor, player: n.tag === state.player });
+      const text = T[terr]?.displayName || n.name;
+      labelledTerr.add(terr);
+      labels.push({ tag: n.tag, name: text, x: c[0], y: c[1], a, minor: n.minor, player: n.tag === state.player });
+    }
+    for (const [name, t] of Object.entries(T)) {
+      if (!t.displayName || labelledTerr.has(name) || !this.byName.has(name)) continue;
+      const { c, a } = this.labelPoint(this.byName.get(name));
+      if (!isFinite(c[0])) continue;
+      labels.push({ tag: `place:${name}`, name: t.displayName, x: c[0], y: c[1], a, minor: false, player: false });
     }
     this.gLabels.selectAll('text')
       .data(labels, d => d.tag)

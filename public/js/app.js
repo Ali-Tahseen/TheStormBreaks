@@ -360,8 +360,9 @@ function showTooltip(name, e) {
   const t = s.territories[name];
   const owner = s.nations[t.owner];
   const occ = Object.entries(t.occupation || {}).map(([k, v]) => `${esc(s.nations[k]?.name || k)} ${v}%`).join(', ');
+  const shown = t.displayName || name;
   const war = owner.tag !== s.player && s.wars.some(w => w.includes(owner.tag) && w.includes(s.player));
-  tip.innerHTML = `<strong>${esc(name)}</strong><br>
+  tip.innerHTML = `<strong>${esc(shown)}</strong>${t.displayName && t.displayName !== name ? `<br><span class="muted">${esc(name)}</span>` : ''}<br>
     <span class="swatch" style="${swatchStyle(owner)}"></span> ${esc(owner.name)}${owner.tag === s.player ? ' (you)' : ''}
     ${occ ? `<br>Occupied by ${occ}` : ''}${war ? '<br><span style="color:var(--loss)">At war with you</span>' : ''}`;
   tip.hidden = false;

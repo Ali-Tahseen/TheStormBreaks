@@ -114,6 +114,15 @@ Relations run from −100 (hostile) to +100 (allied). `delta` is limited to ±40
 { "type": "set_leader", "country": "UK", "leader": "Winston Churchill" }
 ```
 
+### `rename`
+Changes a label for this game only. The map file and the original 1939 territory keys stay the same, so other actions still use `"Poland"`, `"East Prussia"`, and so on. A new game starts with the original names. Hovering a renamed territory still shows the original name in smaller type.
+
+`territory` relabels that shape on the map. `country` changes the nation's display name (the tag is unchanged).
+```json
+{ "type": "rename", "territory": "Poland", "name": "General Government" }
+{ "type": "rename", "country": "GER", "name": "Greater German Reich" }
+```
+
 ### `add_event`
 Adds a milestone to the timeline strip under the map. Listed territories pulse on the map.
 ```json

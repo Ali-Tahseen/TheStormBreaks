@@ -49,7 +49,7 @@ function summarize(s) {
     wars: s.wars.map(([a, b]) => `${a} vs ${b}`),
     nations: majors.map(n => ({ tag: n.tag, name: n.name, leader: n.leader, faction: n.faction, capitulated: n.capitulated, indicators: n.indicators })),
     occupied: Object.entries(s.territories).filter(([, t]) => Object.keys(t.occupation).length)
-      .map(([name, t]) => ({ territory: name, owner: t.owner, occupation: t.occupation })),
+      .map(([name, t]) => ({ territory: name, label: t.displayName || name, owner: t.owner, occupation: t.occupation })),
     lastTurn: s.journal.at(-1) ? { headline: s.journal.at(-1).headline, narrative: s.journal.at(-1).narrative } : null,
     advisors: s.advisors || null
   };
@@ -80,7 +80,7 @@ server.registerTool('take_turn', {
 
 server.registerTool('apply_actions', {
   title: 'Apply actions',
-  description: 'Apply game actions directly (no AI). Each action is an object with a "type" such as occupy_territory, annex_territory, change_indicator, declare_war, make_peace, join_faction, change_relation, set_leader, add_event. See docs/ACTIONS.md for fields.',
+  description: 'Apply game actions directly (no AI). Each action is an object with a "type" such as occupy_territory, annex_territory, change_indicator, declare_war, make_peace, join_faction, change_relation, set_leader, rename, add_event. See docs/ACTIONS.md for fields.',
   inputSchema: { actions: z.array(z.record(z.string(), z.any())).min(1).max(40) }
 }, async ({ actions }) => {
   try {

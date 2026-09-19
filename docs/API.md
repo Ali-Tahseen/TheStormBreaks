@@ -60,8 +60,9 @@ Values: `scenarioId` is `ww2-1939` or `china-1939`; `player` is a tag (`GER`, `C
     // ... every nation, including auto-generated minors
   },
   "territories": {
-    "Canada": { "owner": "CAN", "occupation": { "GER": 10 } }
-    // ... one entry per map shape
+    "Canada": { "owner": "CAN", "occupation": { "GER": 10 } },
+    "Poland": { "owner": "GER", "occupation": {}, "displayName": "General Government" }
+    // displayName is session-only (the `rename` action); the object key stays the 1939 map name
   },
   "wars": [["GER", "POL"], ["JAP", "CHN"]],
   "relations": { "GER|SOV": 20 },      // keys are two tags sorted alphabetically

@@ -47,11 +47,14 @@ ACTIONS you may emit (JSON objects in an "actions" array). Use nation TAGS (e.g.
 - {"type":"leave_faction","country":TAG}
 - {"type":"change_relation","a":TAG,"b":TAG,"delta":-40..40}
 - {"type":"set_leader","country":TAG,"leader":TEXT}
+- {"type":"rename","territory":NAME,"name":TEXT}   (this game only: changes the label on the map. Other actions still use the original 1939 territory name.)
+- {"type":"rename","country":TAG,"name":TEXT}     (this game only: changes the nation's display name. The tag stays the same.)
 - {"type":"add_event","title":TEXT,"description":TEXT,"category":"war"|"diplomacy"|"economy"|"politics"|"other","territories":[NAMES]}
 Indicators: ${Object.entries(scenario.indicators).map(([k, v]) => `${k} (${v.min}-${v.max}${v.unit ? ' ' + v.unit : ''})`).join(', ')}.
 Political indicators: stability = how firmly the government holds power (0 = collapse); war_support = willingness to fight; army_support = loyalty of the armed forces and officer corps to the government (purges, defeats or unpopular orders lower it; victories, pay and equipment raise it); citizen_support = ordinary people's approval of the government (shortages, repression and casualties lower it; successes and fair rationing raise it).
 Typical changes per turn are small: 1-10 points. GDP changes are a few percent. Big swings only for dramatic events.
-Use add_event only for milestones worth a place on the timeline (wars, treaties, conquests, regime change).`;
+Use add_event only for milestones worth a place on the timeline (wars, treaties, conquests, regime change).
+If the order or story renames a country or a place (invade and rename, proclaim a new name), emit rename. Do not invent new territory keys.`;
 
 const SAFETY = `
 AUDIENCE AND SAFETY: players are school students aged about 12-18 using this in history lessons.
@@ -84,13 +87,13 @@ YOUR JOB IS THE PLAYER'S ORDER. You must apply its direct map consequences, incl
 3. Decide how many months pass (1-6; small tactical orders 1 month, economic plans or long campaigns 3-6).
 4. Write what happened as a short, vivid history-book narrative (2-3 paragraphs, under 220 words total) in which the order is carried out in full.
 5. Emit ACTIONS that make the game state match the narrative — every number you change must be explained by the story. Apply every part of the order at full strength.
-6. The map only changes through actions. If your narrative says a nation surrendered, capitulated, was defeated or lost/gained land, you MUST emit the matching capitulate / occupy_territory / annex_territory / liberate_territory action. Never describe a map change without its action, and never invent an action the narrative does not explain.`
+6. The map only changes through actions. If your narrative says a nation surrendered, capitulated, was defeated or lost/gained land, you MUST emit the matching capitulate / occupy_territory / annex_territory / liberate_territory action. If it says a country or place was renamed, you MUST emit rename. Never describe a map change without its action, and never invent an action the narrative does not explain.`
     : `1. Interpret the order (it may name several actions, or speak on behalf of other nations — treat it as the player's intention for the story).
 2. Judge feasibility: "success", "partial", "failed" or "refused".
 3. Decide how many months pass (1-6; small tactical orders 1 month, economic plans or long campaigns 3-6).
 4. Write what happened as a short, vivid history-book narrative (2-3 paragraphs, under 220 words total) that blends real history with the student's changes.
 5. Emit ACTIONS that make the game state match the narrative — every number you change must be explained by the story.
-6. The map only changes through actions. If your narrative says a nation surrendered, capitulated, was defeated or lost/gained land, you MUST emit the matching capitulate / occupy_territory / annex_territory / liberate_territory action. Never describe a map change without its action, and never invent an action the narrative does not explain.`;
+6. The map only changes through actions. If your narrative says a nation surrendered, capitulated, was defeated or lost/gained land, you MUST emit the matching capitulate / occupy_territory / annex_territory / liberate_territory action. If it says a country or place was renamed, you MUST emit rename. Never describe a map change without its action, and never invent an action the narrative does not explain.`;
   return `You are the Game Master of an educational grand-strategy game set in ${scenario.era}, ${scenario.setting}. You are the game's rules engine.
 The student plays ${state.nations[state.player].name}. Each turn they type an order in plain language. You:
 ${steps}
@@ -396,8 +399,8 @@ function effectsSystem(state, lang) {
   return `You are the action writer for the engine of an educational grand-strategy game set in ${scenario.era}. The Game Master has already written what happened; your only job is to return the engine ACTIONS that make the board match that story. The Game Master sometimes describes a territorial change but forgets the action — supply it.
 Rules:
 - Output JSON only, exactly this shape: {"actions": [ ... ]}
-- Add ONLY actions the story already describes. If the story changes no land, ownership, war, faction or relation, return an empty "actions" array.
-- The map changes only through actions. A nation that is annexed, occupied, liberated or surrenders needs the matching action.
+- Add ONLY actions the story already describes. If the story changes no land, ownership, war, faction, relation or name, return an empty "actions" array.
+- The map changes only through actions. A nation that is annexed, occupied, liberated or surrenders needs the matching action. A country or place that is renamed needs a rename action (this game only; keep using the original 1939 territory names in every other action).
 - Use nation TAGS (e.g. "SOV") and the EXACT territory names from the world data. Never use collective names: emit one action per territory ("the Baltic states" is three actions: Estonia, Latvia, Lithuania).
 ${clockRule}
 ${actionSpec(scenario)}

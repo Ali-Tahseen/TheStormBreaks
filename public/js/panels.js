@@ -51,6 +51,7 @@ function rankOf(state, key, tag) {
 }
 
 const territoriesOf = (state, tag) => Object.keys(state.territories).filter(t => state.territories[t].owner === tag);
+const terrLabel = (state, name) => state.territories[name]?.displayName || name;
 
 // ---------- compact panel: your nation ----------
 export function nationCard(state, { dossierOpen = false } = {}) {
@@ -187,9 +188,9 @@ export function dossierHTML(state, indicators, portrait) {
   const wars = warsOf(state, me).map(name);
   const held = territoriesOf(state, me);
   const occupiedHome = held.filter(t => Object.keys(state.territories[t].occupation || {}).length)
-    .map(t => `${esc(t)} <span class="muted">(${Object.entries(state.territories[t].occupation).map(([o, v]) => `${esc(name(o))} ${v}%`).join(', ')})</span>`);
+    .map(t => `${esc(terrLabel(state, t))} <span class="muted">(${Object.entries(state.territories[t].occupation).map(([o, v]) => `${esc(name(o))} ${v}%`).join(', ')})</span>`);
   const abroad = Object.entries(state.territories).filter(([, t]) => t.owner !== me && t.occupation?.[me])
-    .map(([t, x]) => `${esc(t)} <span class="muted">(${x.occupation[me]}%)</span>`);
+    .map(([t, x]) => `${esc(terrLabel(state, t))} <span class="muted">(${x.occupation[me]}%)</span>`);
   const rels = notableNations(state).filter(o => !o.capitulated)
     .map(o => ({ o, r: relation(state, me, o.tag), war: warsOf(state, me).includes(o.tag) }))
     .sort((a, b) => b.r - a.r);

@@ -39,7 +39,7 @@ Stack: Node.js ≥ 18.17 (ES modules), Express 5, dotenv, vanilla JS frontend wi
 | `server/data/timelines/*.js` | `TIMELINE` of real events per campaign |
 | `server/data/timeline.js` | Generic `eventsBetween(timeline, …)` / `eventsNear(timeline, …)` |
 | `public/js/app.js` | Boot, event wiring, scenario picker, `sendOrder` turn flow, date roll animation, start/hood/ending modals, report screen, lesson drawer |
-| `public/js/map.js` | `WorldMap`: projection, fills, occupation patterns, borders mesh, labels, zoom/views (incl. China)/focus, pulse |
+| `public/js/map.js` | `WorldMap`: projection, fills, occupation patterns, borders mesh, labels (including session-only `displayName` from `rename`), zoom/views (incl. China)/focus, pulse |
 | `public/js/panels.js` | Pure HTML builders: compact nation panel (stat tiles, diplomacy summary, journal), intel card, country report (dossier), advisors bar + briefing, log, lesson, hood, after-action report |
 | `public/js/portraits.js` | `portraitFor(nation)`: matches `public/img/country_leaders_portraits/*.jpg` to the nation's current leader (head-of-state fallback for France under Daladier/Reynaud and Bulgaria) |
 | `public/js/event-images.js` | `eventCategory()` + `pickEventImage()` (random within a category) + `summaryFromNarrative()` for the event popup. Pure, no DOM |
